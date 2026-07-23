@@ -25,29 +25,50 @@ const mono = Space_Mono({
 
 const siteUrl = process.env.NEXTAUTH_URL ?? "https://lamordida.com";
 
+
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
   title: {
-    default: "La Mordida — Hamburguesas y perros artesanales",
-    template: "%s · La Mordida",
+    default: "La Mordida",
+    template: "%s | La Mordida",
   },
+
   description:
-    "Hamburguesas y perros calientes artesanales, preparados con carnes e ingredientes frescos y naturales. Pide en línea y gana puntos con cada mordida.",
-  keywords: ["hamburguesas artesanales", "perros calientes", "comida rápida gourmet", "La Mordida", "restaurante"],
+    "Hamburguesas y perros calientes artesanales en Popayán. Pide en línea y acumula puntos con cada compra.",
+
+  metadataBase: new URL("https://TU-DOMINIO.com"),
+
   openGraph: {
-    title: "La Mordida — Hamburguesas y perros artesanales",
-    description: "Carnes e ingredientes frescos, preparación 100% artesanal. Pide en línea y acumula puntos.",
-    url: siteUrl,
+    title: "La Mordida",
+    description:
+      "Hamburguesas y perros calientes artesanales en Popayán.",
+    url: "https://la-mordida.vercel.app",
     siteName: "La Mordida",
     locale: "es_CO",
     type: "website",
+
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "La Mordida",
+      },
+    ],
   },
+
   twitter: {
     card: "summary_large_image",
-    title: "La Mordida — Hamburguesas y perros artesanales",
-    description: "Carnes e ingredientes frescos, preparación 100% artesanal.",
+    title: "La Mordida",
+    description:
+      "Hamburguesas y perros calientes artesanales en Popayán.",
+
+    images: ["/og-image.jpg"],
   },
-  robots: { index: true, follow: true },
+
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

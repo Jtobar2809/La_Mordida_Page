@@ -261,16 +261,29 @@ async function main() {
     where: { slug: { in: ["la-ahumada-bbq", "la-picante-jalapeno", "la-clasica-de-pollo", "perro-clasico", "perro-ranchero"] } },
   });
   for (const { categorySlug, extras, ...product } of productsData) {
-    await prisma.product.upsert({
-      where: { slug: product.slug },
-      update: { ...product, categoryId: categories[categorySlug] },
-      create: {
-        ...product,
-        categoryId: categories[categorySlug],
-        extras: { create: extras },
-      },
-    });
+  const categoryId = categories[categorySlug];
+
+  if (!categoryId) {
+    throw new Error(`No existe la categoría: ${categorySlug}`);
   }
+
+  await prisma.product.upsert({
+    where: {
+      slug: product.slug,
+    },
+    update: {
+      ...product,
+      categoryId,
+    },
+    create: {
+      ...product,
+      categoryId,
+      extras: {
+        create: extras,
+      },
+    },
+  });
+}
   console.log(`✅ ${productsData.length} productos creados`);
 
   // ── Reseñas ──────────────────────────────────────────
