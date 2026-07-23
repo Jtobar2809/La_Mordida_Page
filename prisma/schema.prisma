@@ -1,0 +1,462 @@
+// ============================================================
+// LA MORDIDA — Esquema de base de datos
+// Restaurante de hamburguesas y perros artesanales
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// AUTENTICACIÓN (Auth.js / NextAuth)
+// ─────────────────────────────────────────────
+
+enum Role {
+  CLIENTE
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String? // null si el usuario entra solo con Google
+  phone         String?
+  address       String?
+  birthDate     DateTime?
+  role          Role      @default(CLIENTE)
+
+  // Programa de fidelización
+  points  Int    @default(0)
+  levelId String?
+  level   Level? @relation(fields: [levelId], references: [id])
+
+  accounts             Account[]
+  sessions             Session[]
+  orders               Order[]
+  pointsTransactions   PointsTransaction[]
+  challengeProgress    ChallengeProgress[]
+  redemptions          Redemption[]
+  codeRedemptions      CodeRedemption[]
+  createdCodes         RedemptionCode[]     @relation("CodeCreator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@index([email])
+}
+
+// ─────────────────────────────────────────────
+// NIVELES DE FIDELIZACIÓN
+// ─────────────────────────────────────────────
+
+model Level {
+  id        String  @id @default(cuid())
+  name      String  @unique // Bronce, Plata, Oro, Diamante
+  minPoints Int // puntos acumulados históricos para alcanzar el nivel
+  multiplier Float  @default(1) // multiplicador de puntos ganados en este nivel
+  color     String  @default("#E85C2B")
+  icon      String  @default("flame")
+  benefits  String[] // lista de beneficios en texto
+  order     Int     @default(0)
+
+  users User[]
+
+  @@index([order])
+}
+
+// ─────────────────────────────────────────────
+// MENÚ
+// ─────────────────────────────────────────────
+
+model Category {
+  id       String  @id @default(cuid())
+  name     String
+  slug     String  @unique
+  icon     String? // nombre de ícono lucide
+  order    Int     @default(0)
+  active   Boolean @default(true)
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([order])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String
+  price       Int // en pesos (COP), sin decimales
+  image       String?
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  ingredients String[]
+  featured    Boolean  @default(false)
+  available   Boolean  @default(true)
+  spicyLevel  Int      @default(0) // 0-3
+  calories    Int?
+
+  extras     ProductExtra[]
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+  @@index([featured])
+  @@index([available])
+}
+
+model ProductExtra {
+  id        String  @id @default(cuid())
+  name      String
+  price     Int     @default(0)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  active    Boolean @default(true)
+
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────
+// PEDIDOS
+// ─────────────────────────────────────────────
+
+enum OrderStatus {
+  PENDIENTE
+  CONFIRMADO
+  EN_PREPARACION
+  EN_CAMINO
+  ENTREGADO
+  CANCELADO
+}
+
+enum DeliveryType {
+  DOMICILIO
+  RECOGE_EN_TIENDA
+}
+
+model Order {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  status       OrderStatus  @default(PENDIENTE)
+  deliveryType DeliveryType @default(DOMICILIO)
+  address      String?
+  notes        String?
+
+  subtotal     Int
+  deliveryFee  Int @default(0)
+  tax          Int @default(0)
+  discount     Int @default(0)
+  total        Int
+
+  couponCode String?
+  pointsEarned Int @default(0)
+
+  whatsappSent Boolean @default(false)
+
+  items OrderItem[]
+  pointsTransactions PointsTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Int
+  notes     String?
+  extras    Json? // snapshot de extras elegidos [{name, price}]
+
+  @@index([orderId])
+}
+
+// ─────────────────────────────────────────────
+// PUNTOS
+// ─────────────────────────────────────────────
+
+enum PointsType {
+  GANADO_COMPRA
+  GANADO_CODIGO
+  GANADO_DESAFIO
+  CANJEADO
+  AJUSTE_ADMIN
+  BONO_BIENVENIDA
+}
+
+model PointsTransaction {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  orderId     String?
+  order       Order?     @relation(fields: [orderId], references: [id])
+  points      Int // positivo suma, negativo resta
+  type        PointsType
+  description String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+}
+
+// ─────────────────────────────────────────────
+// CÓDIGOS DE REGISTRO DE COMPRA
+// El admin genera un código con un valor en puntos.
+// El cliente lo ingresa en su panel para reclamar los puntos
+// de una compra realizada en tienda / caja física.
+// ─────────────────────────────────────────────
+
+model RedemptionCode {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  pointsValue Int
+  description String? // ej: "Compra mostrador #4821 - $45.000"
+  maxUses     Int      @default(1)
+  uses        Int      @default(0)
+  active      Boolean  @default(true)
+  expiresAt   DateTime?
+
+  createdById String
+  createdBy   User   @relation("CodeCreator", fields: [createdById], references: [id])
+
+  redemptions CodeRedemption[]
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+  @@index([active])
+}
+
+model CodeRedemption {
+  id               String         @id @default(cuid())
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+  redemptionCodeId String
+  redemptionCode   RedemptionCode @relation(fields: [redemptionCodeId], references: [id])
+  pointsEarned     Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, redemptionCodeId]) // un cliente no puede reclamar el mismo código dos veces
+  @@index([redemptionCodeId])
+}
+
+// ─────────────────────────────────────────────
+// DESAFÍOS
+// ─────────────────────────────────────────────
+
+enum ChallengeType {
+  CANTIDAD_PRODUCTO // comprar N unidades de un producto o categoría
+  PEDIDOS_TOTALES // realizar N pedidos
+  RACHA_SEMANAS // comprar N semanas seguidas
+  REFERIDO // invitar un amigo
+  PRODUCTO_NUEVO // comprar un producto marcado como nuevo
+  CUMPLEANOS // comprar en el mes de cumpleaños
+  CATEGORIA_COMPLETA // comprar al menos un producto de cada categoría
+  COMBO // comprar un combo específico
+}
+
+model Challenge {
+  id               String        @id @default(cuid())
+  title            String
+  description      String
+  type             ChallengeType
+  goal             Int // meta numérica (ej: 5 hamburguesas, 3 semanas, 10 pedidos)
+  rewardPoints     Int           @default(0)
+  rewardDescription String?
+  badgeIcon        String        @default("trophy")
+  active           Boolean       @default(true)
+  startDate        DateTime?
+  endDate          DateTime?
+
+  progress ChallengeProgress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+model ChallengeProgress {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  progress    Int       @default(0)
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, challengeId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// RECOMPENSAS (catálogo canjeable por puntos)
+// ─────────────────────────────────────────────
+
+model Reward {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  pointsCost  Int
+  image       String?
+  stock       Int? // null = ilimitado
+  active      Boolean  @default(true)
+
+  redemptions Redemption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+enum RedemptionStatus {
+  PENDIENTE
+  ENTREGADO
+  CANCELADO
+}
+
+model Redemption {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  rewardId    String
+  reward      Reward           @relation(fields: [rewardId], references: [id])
+  pointsSpent Int
+  code        String           @unique // código que el cliente muestra en caja para reclamar
+  status      RedemptionStatus @default(PENDIENTE)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([code])
+}
+
+// ─────────────────────────────────────────────
+// CUPONES
+// ─────────────────────────────────────────────
+
+enum DiscountType {
+  PORCENTAJE
+  FIJO
+}
+
+model Coupon {
+  id           String       @id @default(cuid())
+  code         String       @unique
+  discountType DiscountType
+  value        Int
+  minOrder     Int          @default(0)
+  usageLimit   Int?
+  used         Int          @default(0)
+  active       Boolean      @default(true)
+  expiresAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([code])
+}
+
+// ─────────────────────────────────────────────
+// CONTENIDO DEL SITIO
+// ─────────────────────────────────────────────
+
+model Banner {
+  id       String  @id @default(cuid())
+  title    String
+  subtitle String?
+  image    String
+  link     String?
+  order    Int     @default(0)
+  active   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([order])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  authorName String
+  rating    Int // 1-5
+  comment   String
+  avatar    String?
+  approved  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Settings {
+  key   String @id
+  value String
+}

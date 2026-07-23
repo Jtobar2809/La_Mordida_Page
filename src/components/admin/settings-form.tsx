@@ -1,0 +1,76 @@
+"use client";
+
+import * as React from "react";
+import { toast } from "sonner";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { updateSettings } from "@/actions/admin/settings";
+import type { DEFAULT_SETTINGS } from "@/lib/settings";
+
+type Settings = typeof DEFAULT_SETTINGS;
+
+export function SettingsForm({ settings }: { settings: Settings }) {
+  const [form, setForm] = React.useState(settings);
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const result = await updateSettings(form);
+    setLoading(false);
+
+    if (!result.success) return toast.error(result.error);
+    toast.success("Configuración guardada");
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <Card className="space-y-4 p-6">
+        <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">PROGRAMA DE PUNTOS</h2>
+        <div>
+          <Label htmlFor="pointsPerPeso">Pesos gastados por cada punto</Label>
+          <Input id="pointsPerPeso" type="number" min={1} value={form.pointsPerPeso} onChange={(e) => setForm({ ...form, pointsPerPeso: e.target.value })} />
+          <p className="mt-1 text-xs text-charcoal-400">Ej: 1000 → cada $1.000 COP gastados = 1 punto.</p>
+        </div>
+        <div>
+          <Label htmlFor="welcomeBonusPoints">Bono de bienvenida al registrarse</Label>
+          <Input id="welcomeBonusPoints" type="number" min={0} value={form.welcomeBonusPoints} onChange={(e) => setForm({ ...form, welcomeBonusPoints: e.target.value })} />
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-6">
+        <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">PEDIDOS</h2>
+        <div>
+          <Label htmlFor="deliveryFee">Costo de domicilio (COP)</Label>
+          <Input id="deliveryFee" type="number" min={0} value={form.deliveryFee} onChange={(e) => setForm({ ...form, deliveryFee: e.target.value })} />
+        </div>
+        <div>
+          <Label htmlFor="taxRate">Impuesto (%)</Label>
+          <Input id="taxRate" type="number" min={0} max={100} value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} />
+        </div>
+        <div>
+          <Label htmlFor="whatsappNumber">Número de WhatsApp (con código de país, sin +)</Label>
+          <Input id="whatsappNumber" value={form.whatsappNumber} onChange={(e) => setForm({ ...form, whatsappNumber: e.target.value })} placeholder="573000000000" />
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-6">
+        <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">TIENDA</h2>
+        <div>
+          <Label htmlFor="storeAddress">Dirección</Label>
+          <Input id="storeAddress" value={form.storeAddress} onChange={(e) => setForm({ ...form, storeAddress: e.target.value })} />
+        </div>
+        <div>
+          <Label htmlFor="storeSchedule">Horario</Label>
+          <Input id="storeSchedule" value={form.storeSchedule} onChange={(e) => setForm({ ...form, storeSchedule: e.target.value })} />
+        </div>
+      </Card>
+
+      <Button type="submit" disabled={loading} size="lg">
+        {loading ? "Guardando..." : "Guardar configuración"}
+      </Button>
+    </form>
+  );
+}

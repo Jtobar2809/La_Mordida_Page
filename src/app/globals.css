@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-charcoal-100;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-cream text-charcoal-900 antialiased dark:bg-charcoal-900 dark:text-cream;
+  }
+  ::selection {
+    @apply bg-ember-500 text-white;
+  }
+  dialog::backdrop {
+    animation: fade-up 0.15s ease-out;
+  }
+}
+
+@layer components {
+  /*
+   * La firma visual de la marca: la esquina "mordida".
+   * Un círculo recortado en la esquina superior derecha de tarjetas destacadas,
+   * como si alguien hubiera dado un mordisco — literalmente "La Mordida".
+   */
+  .card-bite {
+    --bite-r: 22px;
+    -webkit-mask-image: radial-gradient(
+      circle var(--bite-r) at calc(100% - 4px) 4px,
+      transparent calc(var(--bite-r) - 0.5px),
+      black calc(var(--bite-r) + 0.5px)
+    );
+    mask-image: radial-gradient(
+      circle var(--bite-r) at calc(100% - 4px) 4px,
+      transparent calc(var(--bite-r) - 0.5px),
+      black calc(var(--bite-r) + 0.5px)
+    );
+  }
+
+  .container-lm {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+  }
+
+  .eyebrow {
+    @apply font-mono text-xs font-semibold uppercase tracking-[0.2em] text-ember-600 dark:text-ember-400;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
