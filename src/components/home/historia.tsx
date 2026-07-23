@@ -6,11 +6,11 @@ export function Historia() {
     },
     {
       title: "El pan",
-      text: "Horneado en casa, brioche suave por fuera y firme por dentro para aguantar cada capa de ingredientes.",
+      text: "Horneado excelente, brioche suave por fuera y firme por dentro para aguantar cada capa de ingredientes.",
     },
     {
       title: "El fuego",
-      text: "Cocinamos a la parrilla para sellar el sabor y dejar ese toque ahumado que nos distingue.",
+      text: "Cocinamos perfectamente para sellar el sabor y dejar ese toque ahumado que nos distingue.",
     },
   ];
 

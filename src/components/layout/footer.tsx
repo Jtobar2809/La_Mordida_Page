@@ -15,14 +15,14 @@ export function Footer() {
           </p>
           <div className="mt-5 flex gap-3">
             <a
-              href="#"
+              href="https://www.instagram.com/lamordida.pop/"
               aria-label="Instagram"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
               <Instagram className="h-4 w-4" />
             </a>
             <a
-              href="#"
+              href="https://www.facebook.com/profile.php?id=61592053178769"
               aria-label="Facebook"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
