@@ -2,32 +2,32 @@
 
 import { motion } from "framer-motion";
 
+interface FloatingProps {
+  children: React.ReactNode;
+  distance?: number;
+  duration?: number;
+  className?: string;
+}
+
 export function Floating({
-    children,
-}:{
-    children:React.ReactNode
-}){
-
-    return(
-
-        <motion.div
-
-            animate={{
-                y:[0,-10,0]
-            }}
-
-            transition={{
-                duration:4,
-                repeat:Infinity,
-                ease:"easeInOut"
-            }}
-
-        >
-
-            {children}
-
-        </motion.div>
-
-    )
-
+  children,
+  distance = 10,
+  duration = 4,
+  className,
+}: FloatingProps) {
+  return (
+    <motion.div
+      animate={{
+        y: [0, -distance, 0],
+      }}
+      transition={{
+        duration,
+        repeat: Infinity,
+        ease: "easeInOut",
+      }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
 }

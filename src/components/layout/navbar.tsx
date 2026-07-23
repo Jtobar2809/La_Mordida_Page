@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, ShoppingBag, User, LayoutDashboard, LogOut } from "lucide-react";
@@ -44,9 +45,19 @@ export function Navbar() {
         )}
       >
         <nav className="container-lm flex h-20 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-display text-3xl tracking-wide">
-            <span className="text-charcoal-900 dark:text-cream">LA</span>
-            <span className="text-ember-600">MORDIDA</span>
+          <Link href="/" className="flex items-center gap-2.5">
+            <Image
+              src="/logo_LaMordida.jpg"
+              alt="La Mordida"
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11 rounded-full object-cover ring-1 ring-charcoal-900/10 dark:ring-cream/20"
+            />
+            <span className="hidden font-display text-2xl tracking-wide sm:inline">
+              <span className="text-charcoal-900 dark:text-cream">LA</span>{" "}
+              <span className="text-ember-600">MORDIDA</span>
+            </span>
           </Link>
 
           <div className="hidden items-center gap-8 md:flex">

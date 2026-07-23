@@ -70,8 +70,8 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: "/favicon.ico",
-    apple: "/favicon.ico",
+    icon: [{ url: "/logo_LaMordida.jpg", type: "image/jpeg" }],
+    apple: [{ url: "/logo_LaMordida.jpg", type: "image/jpeg" }],
   },
 };
 
