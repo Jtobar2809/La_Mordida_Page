@@ -34,7 +34,7 @@ export function TextReveal({ lines, className, amount = 0.4 }: TextRevealProps) 
       variants={container}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, amount }}
+      viewport={{ once: false, amount }}
       className={className}
     >
       {lines.map((text, i) => (

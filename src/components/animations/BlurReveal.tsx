@@ -36,7 +36,7 @@ export function BlurReveal({
       variants={variants}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, amount }}
+      viewport={{ once: false, amount }}
       transition={{ delay }}
       className={cn(className)}
     >

@@ -18,7 +18,7 @@ export function Reveal({
       initial="hidden"
       whileInView="visible"
       viewport={{
-        once: true,
+        once: false,
         amount: 0.15,
       }}
       className={className}

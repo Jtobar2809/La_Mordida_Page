@@ -20,7 +20,7 @@ export function Stagger({
       initial="hidden"
       whileInView="visible"
       viewport={{
-        once: true,
+        once: false,
         amount,
       }}
       className={className}

@@ -29,7 +29,7 @@ export function AnimatedSection({
       variants={fadeIn}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, amount }}
+      viewport={{ once: false, amount }}
       className={cn("relative", className)}
     >
       {children}

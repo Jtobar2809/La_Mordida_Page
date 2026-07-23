@@ -40,7 +40,7 @@ export function AnimatedTitle({
       variants={staggerContainer}
       initial="hidden"
       whileInView="visible"
-      viewport={{ once: true, amount }}
+      viewport={{ once: false, amount }}
       className={cn(
         "font-display tracking-wide text-charcoal-900 dark:text-cream",
         className
