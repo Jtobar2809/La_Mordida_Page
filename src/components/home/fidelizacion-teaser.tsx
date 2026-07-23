@@ -1,6 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { Flame, Gem, Award, Medal } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AnimatedSection } from "@/components/animations/AnimatedSection";
+import { GradientBackground } from "@/components/layout/GradientBackground";
+import { GlowButton } from "@/components/ui/GlowButton";
+import { Reveal } from "@/components/animations/Reveal";
+import { Stagger } from "@/components/animations/Stagger";
+import { HoverScale } from "@/components/animations/HoverScale";
+import { Floating } from "@/components/animations/Floating";
 
 const niveles = [
   { name: "Bronce", icon: Medal, color: "text-amber-700", desc: "Empiezas aquí" },
@@ -11,14 +19,12 @@ const niveles = [
 
 export function FidelizacionTeaser() {
   return (
-    <section className="relative overflow-hidden bg-char-gradient py-24 text-cream">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute right-0 top-0 h-80 w-80 rounded-full bg-ember-600/20 blur-[100px]"
-      />
+    <AnimatedSection className="relative overflow-hidden bg-char-gradient py-24 text-cream">
+      <GradientBackground variant="char" />
+
       <div className="container-lm relative">
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-2">
-          <div>
+          <Reveal>
             <p className="eyebrow mb-3">Programa de fidelización</p>
             <h2 className="font-display text-4xl leading-tight tracking-wide sm:text-5xl">
               CADA MORDIDA
@@ -30,26 +36,27 @@ export function FidelizacionTeaser() {
               hamburguesas, papas, bebidas y premios especiales.
             </p>
             <Link href="/registro">
-              <Button size="lg" className="mt-8">
-                Únete gratis
-              </Button>
+              <GlowButton className="mt-8">Únete gratis</GlowButton>
             </Link>
-          </div>
+          </Reveal>
 
-          <div className="grid grid-cols-2 gap-4">
+          <Stagger className="grid grid-cols-2 gap-4">
             {niveles.map(({ name, icon: Icon, color, desc }) => (
-              <div
-                key={name}
-                className="rounded-2xl border border-charcoal-600 bg-charcoal-800/60 p-5 backdrop-blur-sm transition-transform hover:-translate-y-1"
-              >
-                <Icon className={`h-8 w-8 ${color}`} />
-                <p className="mt-3 font-display text-2xl tracking-wide">{name}</p>
-                <p className="text-sm text-charcoal-300">{desc}</p>
-              </div>
+              <Reveal key={name}>
+                <HoverScale>
+                  <Floating>
+                    <div className="rounded-2xl border border-charcoal-600 bg-charcoal-800/60 p-5 backdrop-blur-sm">
+                      <Icon className={`h-8 w-8 ${color}`} />
+                      <p className="mt-3 font-display text-2xl tracking-wide">{name}</p>
+                      <p className="text-sm text-charcoal-300">{desc}</p>
+                    </div>
+                  </Floating>
+                </HoverScale>
+              </Reveal>
             ))}
-          </div>
+          </Stagger>
         </div>
       </div>
-    </section>
+    </AnimatedSection>
   );
 }

@@ -1,4 +1,11 @@
+"use client";
+
 import Image from "next/image";
+import { AnimatedSection } from "@/components/animations/AnimatedSection";
+import { SectionTitle } from "@/components/ui/SectionTitle";
+import { Reveal } from "@/components/animations/Reveal";
+import { Stagger } from "@/components/animations/Stagger";
+import { HoverScale } from "@/components/animations/HoverScale";
 
 const galeria = [
   { src: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=800", alt: "Hamburguesa artesanal doble", big: true },
@@ -9,33 +16,32 @@ const galeria = [
 
 export function Galeria() {
   return (
-    <section className="bg-charcoal-50 py-24 dark:bg-charcoal-800/40">
+    <AnimatedSection className="bg-charcoal-50 py-24 dark:bg-charcoal-800/40">
       <div className="container-lm">
-        <p className="eyebrow mb-3 text-center">Galería</p>
-        <h2 className="mx-auto max-w-xl text-center font-display text-4xl leading-tight tracking-wide text-charcoal-900 dark:text-cream sm:text-5xl">
-          ASÍ SE VE UNA MORDIDA
-        </h2>
+        <SectionTitle eyebrow="Galería" title="ASÍ SE VE UNA MORDIDA" />
 
-        <div className="mt-14 grid grid-cols-2 gap-4 md:grid-cols-4 md:grid-rows-2">
-          {galeria.map((img, i) => (
-            <div
+        <Stagger className="mt-14 grid grid-cols-2 gap-4 md:grid-cols-4 md:grid-rows-2">
+          {galeria.map((img) => (
+            <Reveal
               key={img.alt}
-              className={`relative overflow-hidden rounded-2xl ${
-                img.big ? "col-span-2 row-span-2 aspect-square md:aspect-auto" : "aspect-square"
-              }`}
+              className={img.big ? "col-span-2 row-span-2 aspect-square md:aspect-auto" : "aspect-square"}
             >
-              <Image
-                src={img.src}
-                alt={img.alt}
-                fill
-                className="object-cover transition-transform duration-500 hover:scale-110"
-                sizes="(max-width: 768px) 50vw, 25vw"
-                unoptimized
-              />
-            </div>
+              <HoverScale>
+                <div className="relative h-full w-full overflow-hidden rounded-2xl">
+                  <Image
+                    src={img.src}
+                    alt={img.alt}
+                    fill
+                    className="object-cover transition-transform duration-500 hover:scale-110"
+                    sizes="(max-width: 768px) 50vw, 25vw"
+                    unoptimized
+                  />
+                </div>
+              </HoverScale>
+            </Reveal>
           ))}
-        </div>
+        </Stagger>
       </div>
-    </section>
+    </AnimatedSection>
   );
 }

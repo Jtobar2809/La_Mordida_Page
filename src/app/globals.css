@@ -18,6 +18,12 @@
   dialog::backdrop {
     animation: fade-up 0.15s ease-out;
   }
+  /* Oculta el cursor nativo solo cuando CustomCursor confirmó soporte
+     (fine pointer + sin reduced-motion) y montó su reemplazo. */
+  html.custom-cursor-active,
+  html.custom-cursor-active * {
+    cursor: none !important;
+  }
 }
 
 @layer components {

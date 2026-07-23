@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, Plus_Jakarta_Sans, Space_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { ScrollProgress } from "@/components/animations/ScrollProgress";
+import { CustomCursor } from "@/components/animations/CustomCursor";
+import { PageTransition } from "@/components/animations/PageTransition";
+import { PageReveal } from "@/components/animations/PageReveal";
 import "./globals.css";
 
 const display = Bebas_Neue({
@@ -78,8 +82,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
-      <body className="font-body">
-        <Providers>{children}</Providers>
+      <body className="font-body" suppressHydrationWarning>
+        <PageReveal />
+        <ScrollProgress />
+        <CustomCursor />
+        <Providers>
+          <PageTransition>{children}</PageTransition>
+        </Providers>
       </body>
     </html>
   );
