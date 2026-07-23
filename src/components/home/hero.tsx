@@ -15,7 +15,7 @@ import { MouseParallax } from "@/components/animations/MouseParallax";
 export function Hero() {
   return (
     <CinematicHero className="bg-char-gradient text-cream">
-      <div className="container-lm relative grid min-h-[88vh] grid-cols-1 items-center gap-4 py-24 lg:grid-cols-[1.15fr_1fr] lg:gap-8">
+      <div className="container-lm relative -mt-[76px] grid min-h-[88vh] grid-cols-1 items-center gap-4 py-24 lg:grid-cols-[1.15fr_1fr] lg:gap-8">
         {/* Columna de texto */}
         <div className="relative z-10 flex flex-col gap-8">
           <Reveal>
