@@ -47,6 +47,7 @@ model User {
   redemptions          Redemption[]
   codeRedemptions      CodeRedemption[]
   createdCodes         RedemptionCode[]     @relation("CodeCreator")
+  gameSessions         GameSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -454,6 +455,28 @@ model Review {
   avatar    String?
   approved  Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// MINIJUEGOS
+// Registro de partidas jugadas — es la base del
+// leaderboard de cada juego (mejor puntaje por
+// usuario, hoy / esta semana / histórico). Los
+// minijuegos son solo por diversión y comunidad:
+// no otorgan puntos de fidelización.
+// ─────────────────────────────────────────────
+
+model GameSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  game      String // slug del juego, ej: "atrapa-la-mordida"
+  score     Int
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, game, createdAt])
+  @@index([game, score])
 }
 
 model Settings {

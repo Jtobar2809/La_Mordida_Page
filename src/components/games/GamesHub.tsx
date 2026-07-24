@@ -1,0 +1,73 @@
+"use client";
+
+import * as React from "react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { AtrapaLaMordida } from "@/components/games/AtrapaLaMordida";
+import type { GameSlug } from "@/lib/games";
+
+/**
+ * Catálogo de minijuegos disponibles. Cada entrada nueva que se
+ * construya se agrega aquí — el selector y el layout se generan solos.
+ * `component: null` significa "todavía no construido" (aparece en la
+ * lista como próximamente, sin romper nada).
+ */
+const GAMES: { slug: GameSlug; label: string; emoji: string; component: React.ComponentType | null }[] = [
+  { slug: "atrapa-la-mordida", label: "Atrapa la Mordida", emoji: "🎯", component: AtrapaLaMordida },
+  { slug: "reaccion-rapida", label: "Reacción Rápida", emoji: "⚡", component: null },
+  { slug: "mordi-runner", label: "Mordi Runner", emoji: "🏃", component: null },
+  { slug: "torre-de-ingredientes", label: "Torre de Ingredientes", emoji: "🍔", component: null },
+  { slug: "combo-perfecto", label: "Combo Perfecto", emoji: "🔢", component: null },
+  { slug: "memorama-de-sabores", label: "Memorama de Sabores", emoji: "🃏", component: null },
+  { slug: "salta-la-parrilla", label: "Salta la Parrilla", emoji: "🔥", component: null },
+  { slug: "corta-los-ingredientes", label: "Corta los Ingredientes", emoji: "🔪", component: null },
+  { slug: "encesta-la-papa", label: "Encesta la Papa", emoji: "🍟", component: null },
+  { slug: "ruleta-de-la-suerte", label: "Ruleta de la Suerte", emoji: "🎡", component: null },
+];
+
+/**
+ * Hub de minijuegos: selector horizontal + el juego activo debajo.
+ * Todos los juegos son siempre jugables (no hay toggle de admin) —
+ * son puramente recreativos, pensados para diversión y engagement de
+ * comunidad vía tabla de posiciones.
+ */
+export function GamesHub() {
+  const [active, setActive] = React.useState<GameSlug>("atrapa-la-mordida");
+  const activeGame = GAMES.find((g) => g.slug === active)!;
+  const ActiveComponent = activeGame.component;
+
+  return (
+    <div>
+      <div className="mx-auto flex max-w-4xl flex-wrap justify-center gap-2">
+        {GAMES.map((game) => (
+          <button
+            key={game.slug}
+            onClick={() => game.component && setActive(game.slug)}
+            disabled={!game.component}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+              active === game.slug
+                ? "border-ember-500 bg-ember-500 text-white"
+                : "border-charcoal-200 bg-white text-charcoal-600 hover:border-ember-300 dark:border-charcoal-600 dark:bg-charcoal-800 dark:text-charcoal-200",
+              !game.component && "cursor-not-allowed opacity-40"
+            )}
+          >
+            <span>{game.emoji}</span>
+            {game.label}
+            {!game.component && <span className="text-[10px] uppercase">· pronto</span>}
+          </button>
+        ))}
+      </div>
+
+      <motion.div
+        key={active}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="mt-10"
+      >
+        {ActiveComponent && <ActiveComponent />}
+      </motion.div>
+    </div>
+  );
+}
