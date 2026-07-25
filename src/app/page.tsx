@@ -7,7 +7,6 @@ import { Destacados } from "@/components/home/destacados";
 import { Promociones } from "@/components/home/promociones";
 import { PorQueElegirnos } from "@/components/home/por-que-elegirnos";
 import { FidelizacionTeaser } from "@/components/home/fidelizacion-teaser";
-import { JuegosSection } from "@/components/home/juegos-section";
 import { Resenas } from "@/components/home/resenas";
 import { Galeria } from "@/components/home/galeria";
 
@@ -41,7 +40,6 @@ export default async function HomePage() {
         <Promociones banners={banners} />
         <PorQueElegirnos />
         <FidelizacionTeaser />
-        <JuegosSection />
         <Resenas reviews={reviews} />
         <Galeria />
       </main>

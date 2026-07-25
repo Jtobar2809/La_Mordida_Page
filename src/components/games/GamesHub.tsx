@@ -4,6 +4,13 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { AtrapaLaMordida } from "@/components/games/AtrapaLaMordida";
+import { ReaccionRapida } from "@/components/games/ReaccionRapida";
+import { MordiRunner } from "@/components/games/MordiRunner";
+import { TorreDeIngredientes } from "@/components/games/TorreDeIngredientes";
+import { ComboPerfecto } from "@/components/games/ComboPerfecto";
+import { MemoramaDeSabores } from "@/components/games/MemoramaDeSabores";
+import { SaltaLaParrilla } from "@/components/games/SaltaLaParrilla";
+import { CortaLosIngredientes } from "@/components/games/CortaLosIngredientes";
 import type { GameSlug } from "@/lib/games";
 
 /**
@@ -14,13 +21,13 @@ import type { GameSlug } from "@/lib/games";
  */
 const GAMES: { slug: GameSlug; label: string; emoji: string; component: React.ComponentType | null }[] = [
   { slug: "atrapa-la-mordida", label: "Atrapa la Mordida", emoji: "🎯", component: AtrapaLaMordida },
-  { slug: "reaccion-rapida", label: "Reacción Rápida", emoji: "⚡", component: null },
-  { slug: "mordi-runner", label: "Mordi Runner", emoji: "🏃", component: null },
-  { slug: "torre-de-ingredientes", label: "Torre de Ingredientes", emoji: "🍔", component: null },
-  { slug: "combo-perfecto", label: "Combo Perfecto", emoji: "🔢", component: null },
-  { slug: "memorama-de-sabores", label: "Memorama de Sabores", emoji: "🃏", component: null },
-  { slug: "salta-la-parrilla", label: "Salta la Parrilla", emoji: "🔥", component: null },
-  { slug: "corta-los-ingredientes", label: "Corta los Ingredientes", emoji: "🔪", component: null },
+  { slug: "reaccion-rapida", label: "Reacción Rápida", emoji: "⚡", component: ReaccionRapida },
+  { slug: "mordi-runner", label: "Mordi Runner", emoji: "🏃", component: MordiRunner },
+  { slug: "torre-de-ingredientes", label: "Torre de Ingredientes", emoji: "🍔", component: TorreDeIngredientes },
+  { slug: "combo-perfecto", label: "Combo Perfecto", emoji: "🔢", component: ComboPerfecto },
+  { slug: "memorama-de-sabores", label: "Memorama de Sabores", emoji: "🃏", component: MemoramaDeSabores },
+  { slug: "salta-la-parrilla", label: "Salta la Parrilla", emoji: "🔥", component: SaltaLaParrilla },
+  { slug: "corta-los-ingredientes", label: "Corta los Ingredientes", emoji: "🔪", component: CortaLosIngredientes },
   { slug: "encesta-la-papa", label: "Encesta la Papa", emoji: "🍟", component: null },
   { slug: "ruleta-de-la-suerte", label: "Ruleta de la Suerte", emoji: "🎡", component: null },
 ];

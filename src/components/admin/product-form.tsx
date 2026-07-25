@@ -14,6 +14,40 @@ import type { ProductWithExtras } from "@/types/menu";
 
 type Category = { id: string; name: string };
 
+type FormFields = {
+  name: string;
+  description: string;
+  price: number;
+  categoryId: string;
+  image: string;
+  featured: boolean;
+  available: boolean;
+  spicyLevel: number;
+};
+
+const BASE_FIELDS = [
+  "name",
+  "description",
+  "price",
+  "categoryId",
+  "image",
+  "featured",
+  "available",
+  "spicyLevel",
+] as const;
+type BaseField = (typeof BASE_FIELDS)[number];
+
+/**
+ * Formulario de producto. Al EDITAR (product !== null), solo los campos
+ * que el usuario realmente toca durante esta sesión de edición se
+ * incluyen en el payload enviado al servidor — el resto se omite, y el
+ * servidor conserva sus valores actuales en la base de datos. No hace
+ * falta re-rellenar ni volver a confirmar todo el producto para cambiar
+ * un solo dato (por ejemplo, solo el precio).
+ *
+ * Al CREAR (product === null) se envían siempre todos los campos, ya
+ * que no hay "valor actual" que preservar.
+ */
 export function ProductForm({
   product,
   categories,
@@ -23,7 +57,9 @@ export function ProductForm({
   categories: Category[];
   onDone: () => void;
 }) {
-  const [form, setForm] = React.useState({
+  const isEditing = product !== null;
+
+  const [form, setForm] = React.useState<FormFields>({
     name: product?.name ?? "",
     description: product?.description ?? "",
     price: product?.price ?? 0,
@@ -38,30 +74,72 @@ export function ProductForm({
   const [extras, setExtras] = React.useState(product?.extras.map((e) => ({ name: e.name, price: e.price })) ?? []);
   const [loading, setLoading] = React.useState(false);
 
+  // Campos que el usuario modificó realmente durante esta edición.
+  // Vacío hasta que haya un cambio explícito — así "abrir para editar
+  // y guardar sin tocar nada" no reescribe absolutamente nada.
+  const dirtyFields = React.useRef<Set<BaseField>>(new Set());
+  const ingredientsDirty = React.useRef(false);
+  const extrasDirty = React.useRef(false);
+
+  function updateField<K extends BaseField>(key: K, value: FormFields[K]) {
+    dirtyFields.current.add(key);
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
   const addIngredient = () => {
     if (!ingredientInput.trim()) return;
+    ingredientsDirty.current = true;
     setIngredients((prev) => [...prev, ingredientInput.trim()]);
     setIngredientInput("");
   };
+  const removeIngredient = (idx: number) => {
+    ingredientsDirty.current = true;
+    setIngredients((prev) => prev.filter((_, i) => i !== idx));
+  };
 
-  const addExtra = () => setExtras((prev) => [...prev, { name: "", price: 0 }]);
+  const addExtra = () => {
+    extrasDirty.current = true;
+    setExtras((prev) => [...prev, { name: "", price: 0 }]);
+  };
+  const updateExtra = (idx: number, patch: Partial<{ name: string; price: number }>) => {
+    extrasDirty.current = true;
+    setExtras((prev) => prev.map((ex, i) => (i === idx ? { ...ex, ...patch } : ex)));
+  };
+  const removeExtra = (idx: number) => {
+    extrasDirty.current = true;
+    setExtras((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const result = await upsertProduct({
-      id: product?.id,
-      ...form,
-      ingredients,
-      extras: extras.filter((ex) => ex.name.trim().length > 0),
-    });
+
+    let payload: Record<string, unknown>;
+
+    if (isEditing) {
+      // PATCH parcial: solo los campos realmente tocados van en el payload.
+      payload = { id: product.id };
+      for (const key of dirtyFields.current) {
+        payload[key] = form[key];
+      }
+      if (ingredientsDirty.current) payload.ingredients = ingredients;
+      if (extrasDirty.current) payload.extras = extras.filter((ex) => ex.name.trim().length > 0);
+    } else {
+      payload = {
+        ...form,
+        ingredients,
+        extras: extras.filter((ex) => ex.name.trim().length > 0),
+      };
+    }
+
+    const result = await upsertProduct(payload);
     setLoading(false);
 
     if (!result.success) {
       toast.error(result.error);
       return;
     }
-    toast.success(product ? "Producto actualizado" : "Producto creado");
+    toast.success(isEditing ? "Producto actualizado" : "Producto creado");
     onDone();
   };
 
@@ -69,20 +147,37 @@ export function ProductForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <Label htmlFor="name">Nombre</Label>
-        <Input id="name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Input
+          id="name"
+          required={!isEditing}
+          value={form.name}
+          onChange={(e) => updateField("name", e.target.value)}
+        />
       </div>
       <div>
         <Label htmlFor="description">Descripción</Label>
-        <Textarea id="description" required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <Textarea
+          id="description"
+          required={!isEditing}
+          value={form.description}
+          onChange={(e) => updateField("description", e.target.value)}
+        />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label htmlFor="price">Precio (COP)</Label>
-          <Input id="price" type="number" required min={0} value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} />
+          <Input
+            id="price"
+            type="number"
+            required={!isEditing}
+            min={0}
+            value={form.price}
+            onChange={(e) => updateField("price", Number(e.target.value))}
+          />
         </div>
         <div>
           <Label htmlFor="category">Categoría</Label>
-          <Select id="category" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+          <Select id="category" value={form.categoryId} onChange={(e) => updateField("categoryId", e.target.value)}>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -92,11 +187,18 @@ export function ProductForm({
         </div>
       </div>
       <div>
-        <ImageUploader value={form.image} onChange={(url) => setForm({ ...form, image: url })} label="Foto del producto" />
+        <ImageUploader value={form.image} onChange={(url) => updateField("image", url)} label="Foto del producto" />
       </div>
       <div>
         <Label htmlFor="spicy">Nivel picante (0-3)</Label>
-        <Input id="spicy" type="number" min={0} max={3} value={form.spicyLevel} onChange={(e) => setForm({ ...form, spicyLevel: Number(e.target.value) })} />
+        <Input
+          id="spicy"
+          type="number"
+          min={0}
+          max={3}
+          value={form.spicyLevel}
+          onChange={(e) => updateField("spicyLevel", Number(e.target.value))}
+        />
       </div>
 
       <div>
@@ -121,7 +223,7 @@ export function ProductForm({
           {ingredients.map((ing, i) => (
             <span key={i} className="flex items-center gap-1 rounded-full bg-charcoal-100 px-2.5 py-1 text-xs dark:bg-charcoal-700">
               {ing}
-              <button type="button" onClick={() => setIngredients((prev) => prev.filter((_, idx) => idx !== i))}>
+              <button type="button" onClick={() => removeIngredient(i)}>
                 <X className="h-3 w-3" />
               </button>
             </span>
@@ -142,16 +244,16 @@ export function ProductForm({
               <Input
                 placeholder="Nombre del extra"
                 value={extra.name}
-                onChange={(e) => setExtras((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, name: e.target.value } : ex)))}
+                onChange={(e) => updateExtra(i, { name: e.target.value })}
               />
               <Input
                 type="number"
                 placeholder="Precio"
                 className="w-28"
                 value={extra.price}
-                onChange={(e) => setExtras((prev) => prev.map((ex, idx) => (idx === i ? { ...ex, price: Number(e.target.value) } : ex)))}
+                onChange={(e) => updateExtra(i, { price: Number(e.target.value) })}
               />
-              <Button type="button" variant="ghost" size="icon" onClick={() => setExtras((prev) => prev.filter((_, idx) => idx !== i))}>
+              <Button type="button" variant="ghost" size="icon" onClick={() => removeExtra(i)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -161,17 +263,33 @@ export function ProductForm({
 
       <div className="flex gap-6">
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="h-4 w-4 accent-ember-600" />
+          <input
+            type="checkbox"
+            checked={form.featured}
+            onChange={(e) => updateField("featured", e.target.checked)}
+            className="h-4 w-4 accent-ember-600"
+          />
           Destacado en inicio
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.available} onChange={(e) => setForm({ ...form, available: e.target.checked })} className="h-4 w-4 accent-ember-600" />
+          <input
+            type="checkbox"
+            checked={form.available}
+            onChange={(e) => updateField("available", e.target.checked)}
+            className="h-4 w-4 accent-ember-600"
+          />
           Disponible
         </label>
       </div>
 
+      {isEditing && (
+        <p className="text-xs text-charcoal-400">
+          Solo se guardarán los campos que modifiques. Lo que no toques queda igual.
+        </p>
+      )}
+
       <Button type="submit" disabled={loading} className="w-full">
-        {loading ? "Guardando..." : product ? "Guardar cambios" : "Crear producto"}
+        {loading ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear producto"}
       </Button>
     </form>
   );

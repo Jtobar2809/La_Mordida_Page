@@ -24,7 +24,16 @@ const medalColor = ["text-mustard-400", "text-charcoal-300", "text-amber-700"];
  * no está en el top visible, se muestra su posición aparte ("Tú vas
  * #N") para darle un motivo concreto para volver a intentarlo.
  */
-export function Leaderboard({ game, refreshKey }: { game: GameSlug; refreshKey?: number }) {
+export function Leaderboard({
+  game,
+  refreshKey,
+  formatScore = (s) => String(s),
+}: {
+  game: GameSlug;
+  refreshKey?: number;
+  /** Formatea el score crudo para mostrar (ej. convertir a "177 ms" en vez del número interno usado para ordenar) */
+  formatScore?: (score: number) => string;
+}) {
   const [period, setPeriod] = React.useState<LeaderboardPeriod>("today");
   const [data, setData] = React.useState<Awaited<ReturnType<typeof getLeaderboardAction>> | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -99,7 +108,7 @@ export function Leaderboard({ game, refreshKey }: { game: GameSlug; refreshKey?:
                     <span
                       className={cn(
                         "flex w-6 shrink-0 items-center justify-center font-display text-sm",
-                        i < 3 ? medalColor[i] : "text-charcoal-400"
+                        medalColor[i] ?? "text-charcoal-400"
                       )}
                     >
                       {i < 3 ? <Medal className="h-4 w-4 fill-current" /> : i + 1}
@@ -110,7 +119,7 @@ export function Leaderboard({ game, refreshKey }: { game: GameSlug; refreshKey?:
                     <span className="flex-1 truncate text-sm font-medium text-charcoal-700 dark:text-charcoal-100">
                       {isMe ? "Tú" : entry.name}
                     </span>
-                    <span className="font-mono text-sm font-bold text-ember-600">{entry.bestScore}</span>
+                    <span className="font-mono text-sm font-bold text-ember-600">{formatScore(entry.bestScore)}</span>
                   </motion.li>
                 );
               })}
@@ -124,7 +133,7 @@ export function Leaderboard({ game, refreshKey }: { game: GameSlug; refreshKey?:
               #{data.userRank.rank}
             </span>
             <span className="flex-1 text-sm font-medium text-charcoal-700 dark:text-charcoal-100">Tú</span>
-            <span className="font-mono text-sm font-bold text-ember-600">{data.userRank.bestScore}</span>
+            <span className="font-mono text-sm font-bold text-ember-600">{formatScore(data.userRank.bestScore)}</span>
           </div>
         )}
 
