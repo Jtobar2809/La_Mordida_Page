@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { LoyaltyQrCard } from "@/components/dashboard/loyalty-qr-card";
 import { RedeemCodeForm } from "@/components/dashboard/redeem-code-form";
 import { formatDate, formatCOP } from "@/lib/utils";
-import { Flame, ArrowRight } from "lucide-react";
+import { Flame, ArrowRight, Stamp } from "lucide-react";
+import { getStampCard, STAMPS_REQUIRED } from "@/lib/stamps";
 
 export default async function AccountOverviewPage() {
   const session = await auth();
   if (!session?.user) return null;
 
-  const [user, levels, recentOrders] = await Promise.all([
+  const [user, levels, recentOrders, stampCard] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: session.user.id }, include: { level: true } }),
     prisma.level.findMany({ orderBy: { minPoints: "asc" } }),
     prisma.order.findMany({
@@ -21,6 +22,7 @@ export default async function AccountOverviewPage() {
       take: 3,
       include: { items: true },
     }),
+    getStampCard(session.user.id),
   ]);
 
   const earnedAgg = await prisma.pointsTransaction.aggregate({
@@ -78,6 +80,31 @@ export default async function AccountOverviewPage() {
 
         <LoyaltyQrCard userId={user.id} name={user.name ?? "cliente"} />
       </div>
+
+      <Card className="p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ember-gradient text-white shadow-glow">
+              <Stamp className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">
+                TARJETA DE SELLOS
+              </h2>
+              <p className="text-sm text-charcoal-400">
+                {stampCard.rewardReady
+                  ? "¡Tienes una hamburguesa gratis lista para reclamar!"
+                  : `${stampCard.currentStamps} / ${STAMPS_REQUIRED} sellos juntados`}
+              </p>
+            </div>
+          </div>
+          <Link href="/cuenta/sellos">
+            <Button size="sm" variant="secondary">
+              Ver tarjeta <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </div>
+      </Card>
 
       <Card className="p-6">
         <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">¿COMPRASTE EN TIENDA?</h2>

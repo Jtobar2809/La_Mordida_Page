@@ -48,6 +48,9 @@ model User {
   codeRedemptions      CodeRedemption[]
   createdCodes         RedemptionCode[]     @relation("CodeCreator")
   gameSessions         GameSession[]
+  stampCard            StampCard?
+  claimedStamps        StampQR[]            @relation("StampClaimer")
+  generatedStamps      StampQR[]            @relation("StampGenerator")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -482,4 +485,62 @@ model GameSession {
 model Settings {
   key   String @id
   value String
+}
+
+// ─────────────────────────────────────────────
+// TARJETA DE SELLOS (7 compras = 1 hamburguesa gratis)
+//
+// Flujo: el admin genera un StampQR (token de un solo uso,
+// expira a los 10 minutos, no atado a un cliente específico).
+// El QR se muestra en el mostrador; el primer cliente autenticado
+// que lo escanea desde su cuenta reclama el sello. Al llegar a 7
+// sellos, la StampCard se marca como completa y el admin la marca
+// como entregada manualmente desde el panel tras dar la hamburguesa.
+// ─────────────────────────────────────────────
+
+model StampCard {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  currentStamps Int @default(0) // sellos en la tarjeta activa (0-6, se reinicia al completar)
+  cardsCompleted Int @default(0) // cuántas tarjetas de 7 ha completado en total (histórico)
+
+  rewardReady    Boolean   @default(false) // true cuando llegó a 7 y aún no se ha entregado/marcado
+  rewardClaimedAt DateTime?
+
+  stamps StampQR[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum StampQRStatus {
+  PENDIENTE // generado, esperando ser escaneado
+  RECLAMADO // ya fue escaneado y asignado a un cliente
+  EXPIRADO // pasó el tiempo límite sin ser escaneado
+}
+
+model StampQR {
+  id     String @id @default(cuid())
+  token  String @unique // valor de alta entropía embebido en el QR; nunca el id crudo
+  status StampQRStatus @default(PENDIENTE)
+
+  generatedById String
+  generatedBy   User   @relation("StampGenerator", fields: [generatedById], references: [id])
+
+  claimedById String?
+  claimedBy   User?   @relation("StampClaimer", fields: [claimedById], references: [id])
+  claimedAt   DateTime?
+
+  stampCardId String?
+  stampCard   StampCard? @relation(fields: [stampCardId], references: [id])
+
+  expiresAt DateTime // generatedAt + 10 minutos
+
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([status])
+  @@index([expiresAt])
 }

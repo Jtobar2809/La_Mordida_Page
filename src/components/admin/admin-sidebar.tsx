@@ -14,6 +14,7 @@ import {
   Settings,
   Image as ImageIcon,
   Percent,
+  Stamp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const links = [
   { href: "/admin/categorias", label: "Categorías", icon: Tag },
   { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
+  { href: "/admin/sellos", label: "Tarjeta de sellos", icon: Stamp },
   { href: "/admin/desafios", label: "Desafíos", icon: Trophy },
   { href: "/admin/codigos", label: "Códigos de puntos", icon: Ticket },
   { href: "/admin/recompensas", label: "Recompensas", icon: Gift },
