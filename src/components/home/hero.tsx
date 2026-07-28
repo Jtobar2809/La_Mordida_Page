@@ -91,7 +91,7 @@ export function Hero() {
             <Floating distance={10} duration={4.5}>
               <Image
                 src="/MordiSinFondo.png"
-                alt=""
+                alt="Mordi, la mascota de La Mordida"
                 width={520}
                 height={520}
                 className="w-[280px] sm:w-[360px]"

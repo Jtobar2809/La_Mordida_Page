@@ -17,6 +17,8 @@ export function Footer() {
             <a
               href="https://www.instagram.com/lamordida.pop/"
               aria-label="Instagram"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
               <Instagram className="h-4 w-4" />
@@ -24,6 +26,8 @@ export function Footer() {
             <a
               href="https://www.facebook.com/profile.php?id=61592053178769"
               aria-label="Facebook"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
               <Facebook className="h-4 w-4" />

@@ -114,7 +114,7 @@ export function Leaderboard({
                       {i < 3 ? <Medal className="h-4 w-4 fill-current" /> : i + 1}
                     </span>
                     <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-charcoal-100 dark:bg-charcoal-700">
-                      {entry.image && <Image src={entry.image} alt="" fill className="object-cover" />}
+                      {entry.image && <Image src={entry.image} alt={entry.name ?? 'Avatar'} fill className="object-cover" /> }
                     </div>
                     <span className="flex-1 truncate text-sm font-medium text-charcoal-700 dark:text-charcoal-100">
                       {isMe ? "Tú" : entry.name}
