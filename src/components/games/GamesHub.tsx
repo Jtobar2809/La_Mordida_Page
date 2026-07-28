@@ -1,17 +1,45 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { AtrapaLaMordida } from "@/components/games/AtrapaLaMordida";
-import { ReaccionRapida } from "@/components/games/ReaccionRapida";
-import { MordiRunner } from "@/components/games/MordiRunner";
-import { TorreDeIngredientes } from "@/components/games/TorreDeIngredientes";
-import { ComboPerfecto } from "@/components/games/ComboPerfecto";
-import { MemoramaDeSabores } from "@/components/games/MemoramaDeSabores";
-import { SaltaLaParrilla } from "@/components/games/SaltaLaParrilla";
-import { CortaLosIngredientes } from "@/components/games/CortaLosIngredientes";
 import type { GameSlug } from "@/lib/games";
+
+// Lazy-load heavy game components to keep first-load bundle small
+const Loader = () => <div className="py-12 text-center text-sm text-charcoal-400">Cargando juego…</div>;
+const AtrapaLaMordida = dynamic(() => import("./AtrapaLaMordida").then((m) => m.AtrapaLaMordida), {
+  ssr: false,
+  loading: Loader,
+});
+const ReaccionRapida = dynamic(() => import("./ReaccionRapida").then((m) => m.ReaccionRapida), {
+  ssr: false,
+  loading: Loader,
+});
+const MordiRunner = dynamic(() => import("./MordiRunner").then((m) => m.MordiRunner), {
+  ssr: false,
+  loading: Loader,
+});
+const TorreDeIngredientes = dynamic(() => import("./TorreDeIngredientes").then((m) => m.TorreDeIngredientes), {
+  ssr: false,
+  loading: Loader,
+});
+const ComboPerfecto = dynamic(() => import("./ComboPerfecto").then((m) => m.ComboPerfecto), {
+  ssr: false,
+  loading: Loader,
+});
+const MemoramaDeSabores = dynamic(() => import("./MemoramaDeSabores").then((m) => m.MemoramaDeSabores), {
+  ssr: false,
+  loading: Loader,
+});
+const SaltaLaParrilla = dynamic(() => import("./SaltaLaParrilla").then((m) => m.SaltaLaParrilla), {
+  ssr: false,
+  loading: Loader,
+});
+const CortaLosIngredientes = dynamic(() => import("./CortaLosIngredientes").then((m) => m.CortaLosIngredientes), {
+  ssr: false,
+  loading: Loader,
+});
 
 /**
  * Catálogo de minijuegos disponibles. Cada entrada nueva que se

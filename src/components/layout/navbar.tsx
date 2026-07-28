@@ -144,6 +144,8 @@ export function Navbar() {
             <button
               onClick={() => setOpen(true)}
               aria-label="Abrir menú"
+              aria-controls="site-mobile-menu"
+              aria-expanded={open}
               className="flex h-10 w-10 items-center justify-center rounded-full text-charcoal-700 dark:text-cream md:hidden"
             >
               <Menu className="h-6 w-6" />
@@ -162,6 +164,9 @@ export function Navbar() {
             onClick={() => setOpen(false)}
           >
             <motion.div
+              id="site-mobile-menu"
+              role="dialog"
+              aria-modal="true"
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}

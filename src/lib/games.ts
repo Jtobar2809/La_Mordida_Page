@@ -69,28 +69,27 @@ export async function getLeaderboard(
 ): Promise<LeaderboardEntry[]> {
   const since = periodToDate(period);
 
-  const sessions = await prisma.gameSession.findMany({
+  // Optimized: group by userId to fetch max score per user, then batch-fetch user info.
+  const grouped = await prisma.gameSession.groupBy({
+    by: ["userId"],
     where: { game, ...(since ? { createdAt: { gte: since } } : {}) },
-    select: { userId: true, score: true, user: { select: { name: true, image: true } } },
-    orderBy: { score: "desc" },
+    _max: { score: true },
+    orderBy: { _max: { score: "desc" } },
+    take: limit,
   });
 
-  const bestByUser = new Map<string, LeaderboardEntry>();
-  for (const s of sessions) {
-    const existing = bestByUser.get(s.userId);
-    if (!existing || s.score > existing.bestScore) {
-      bestByUser.set(s.userId, {
-        userId: s.userId,
-        name: s.user.name ?? "Jugador anónimo",
-        image: s.user.image,
-        bestScore: s.score,
-      });
-    }
-  }
+  const userIds = grouped.map((g) => g.userId);
+  if (userIds.length === 0) return [];
 
-  return Array.from(bestByUser.values())
-    .sort((a, b) => b.bestScore - a.bestScore)
-    .slice(0, limit);
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, image: true } });
+  const usersMap = new Map(users.map((u) => [u.id, u]));
+
+  return grouped.map((g) => ({
+    userId: g.userId,
+    name: usersMap.get(g.userId)?.name ?? "Jugador anónimo",
+    image: usersMap.get(g.userId)?.image ?? null,
+    bestScore: g._max.score ?? 0,
+  }));
 }
 
 /** Posición y mejor puntaje del usuario actual en el leaderboard, aunque no esté en el top visible */
@@ -101,26 +100,22 @@ export async function getUserRank(
 ): Promise<{ rank: number; bestScore: number } | null> {
   const since = periodToDate(period);
 
-  const sessions = await prisma.gameSession.findMany({
+  // Optimized: compute best score per user via groupBy, then sort to find rank.
+  const grouped = await prisma.gameSession.groupBy({
+    by: ["userId"],
     where: { game, ...(since ? { createdAt: { gte: since } } : {}) },
-    select: { userId: true, score: true },
-    orderBy: { score: "desc" },
+    _max: { score: true },
   });
 
-  const bestByUser = new Map<string, number>();
-  for (const s of sessions) {
-    const current = bestByUser.get(s.userId) ?? -Infinity;
-    if (s.score > current) bestByUser.set(s.userId, s.score);
-  }
+  if (grouped.length === 0) return null;
 
-  const ranked = Array.from(bestByUser.entries()).sort((a, b) => b[1] - a[1]);
-  const index = ranked.findIndex(([id]) => id === userId);
+  const ranked = grouped
+    .map((g) => ({ userId: g.userId, bestScore: g._max.score ?? 0 }))
+    .sort((a, b) => b.bestScore - a.bestScore);
+
+  const index = ranked.findIndex((r) => r.userId === userId);
   if (index === -1) return null;
-
-  const entry = ranked[index];
-  if (!entry) return null;
-
-  return { rank: index + 1, bestScore: entry[1] };
+  return { rank: index + 1, bestScore: ranked[index].bestScore };
 }
 
 function periodToDate(period: LeaderboardPeriod): Date | null {
