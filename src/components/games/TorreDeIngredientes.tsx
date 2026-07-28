@@ -14,14 +14,17 @@ import { cn } from "@/lib/utils";
 const GAME_SLUG = "torre-de-ingredientes";
 const BEST_SCORE_KEY = "lm_game_best_torre-de-ingredientes";
 
-// Secuencia de ingredientes que se repite en bucle a medida que crece la torre
+// Secuencia de ingredientes que se repite en bucle a medida que crece la
+// torre. Cada uno tiene un gradiente de 2 tonos (en vez de un color
+// sólido plano) para dar sensación de volumen real, como una foto de
+// producto en vez de un bloque de color liso.
 const INGREDIENTS = [
-  { label: "Pan inferior", color: "#D9A15C", height: 22 },
-  { label: "Carne", color: "#6B3A2A", height: 20 },
-  { label: "Queso", color: "#F0C94A", height: 12 },
-  { label: "Tomate", color: "#D64545", height: 14 },
-  { label: "Lechuga", color: "#7BA05B", height: 14 },
-  { label: "Pan superior", color: "#E8B368", height: 24 },
+  { label: "Pan inferior", from: "#F0C97A", to: "#D9A15C", height: 22 },
+  { label: "Carne", from: "#8A5237", to: "#5C3320", height: 20 },
+  { label: "Queso", from: "#FBE27A", to: "#E8B93A", height: 12 },
+  { label: "Tomate", from: "#EA6B5C", to: "#C23B31", height: 14 },
+  { label: "Lechuga", from: "#9CC178", to: "#6E8F4C", height: 14 },
+  { label: "Pan superior", from: "#F5CE8C", to: "#E0A55C", height: 24 },
 ] as const;
 
 // INGREDIENTS nunca está vacío (literal fijo de 6 elementos definido
@@ -204,10 +207,13 @@ export function TorreDeIngredientes() {
           type="button"
           onClick={drop}
           disabled={state !== "playing"}
-          className="relative mt-4 h-72 w-full overflow-hidden rounded-2xl bg-charcoal-50 disabled:cursor-default dark:bg-charcoal-900/40"
+          className="relative mt-4 h-72 w-full overflow-hidden rounded-2xl bg-gradient-to-b from-charcoal-100 to-charcoal-200 shadow-inner disabled:cursor-default dark:from-charcoal-900 dark:to-charcoal-800"
         >
+          {/* Piso de apoyo, para que la torre no flote en el vacío */}
+          <div className="absolute inset-x-0 bottom-0 h-3 bg-gradient-to-t from-charcoal-300/60 to-transparent dark:from-charcoal-950/60" />
+
           {state === "playing" && (
-            <div className="absolute left-1/2 top-6 h-4 w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-charcoal-100 dark:bg-charcoal-800" />
+            <div className="absolute left-1/2 top-6 h-4 w-[calc(100%-2rem)] -translate-x-1/2 rounded-full bg-white/50 shadow-inner dark:bg-charcoal-950/40" />
           )}
 
           {state === "playing" && (
@@ -220,18 +226,18 @@ export function TorreDeIngredientes() {
               }}
             >
               <div
-                className="rounded-lg shadow-md"
+                className="rounded-lg shadow-lg ring-1 ring-black/10"
                 style={{
                   width: LAYER_WIDTH,
                   height: currentIngredient.height,
-                  backgroundColor: currentIngredient.color,
+                  background: `linear-gradient(180deg, ${currentIngredient.from}, ${currentIngredient.to})`,
                 }}
               />
             </div>
           )}
 
           <motion.div
-            className="absolute bottom-0 left-1/2 flex flex-col-reverse items-center"
+            className="absolute bottom-3 left-1/2 flex flex-col-reverse items-center"
             animate={{ rotate: wobble, x: wobble * 1.4 }}
             transition={{ type: "spring", stiffness: 120, damping: 10 }}
             style={{ transformOrigin: "bottom center" }}
@@ -244,11 +250,11 @@ export function TorreDeIngredientes() {
                   initial={{ y: -60, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ type: "spring", stiffness: 300, damping: 22 }}
-                  className="rounded-md shadow-sm"
+                  className="rounded-md shadow-md ring-1 ring-black/10"
                   style={{
                     width: LAYER_WIDTH,
                     height: ingredient.height,
-                    backgroundColor: ingredient.color,
+                    background: `linear-gradient(180deg, ${ingredient.from}, ${ingredient.to})`,
                     transform: `translateX(${layer.offsetX}px)`,
                   }}
                 />

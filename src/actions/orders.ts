@@ -4,10 +4,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { calculatePointsForAmount, awardPoints } from "@/lib/points";
-import { updateChallengesForOrder } from "@/lib/challenges";
 import { buildWhatsappOrderMessage, buildWhatsappLink } from "@/lib/whatsapp";
-import { PointsType } from "@prisma/client";
 import type { ActionResult } from "@/actions/auth";
 
 const cartItemSchema = z.object({
@@ -68,8 +65,6 @@ export async function createOrder(
   const tax = Math.floor(((subtotal - discount) * taxRate) / 100);
   const total = subtotal - discount + deliveryFee + tax;
 
-  const pointsToEarn = await calculatePointsForAmount(total, session.user.id);
-
   const order = await prisma.order.create({
     data: {
       userId: session.user.id,
@@ -82,7 +77,7 @@ export async function createOrder(
       discount,
       total,
       couponCode: discount > 0 ? couponCode?.toUpperCase() : null,
-      pointsEarned: pointsToEarn,
+      pointsEarned: 0,
       items: {
         create: items.map((item) => ({
           productId: item.productId,
@@ -95,18 +90,6 @@ export async function createOrder(
     },
     include: { items: true, user: true },
   });
-
-  if (pointsToEarn > 0) {
-    await awardPoints({
-      userId: session.user.id,
-      points: pointsToEarn,
-      type: PointsType.GANADO_COMPRA,
-      description: `Pedido #${order.id.slice(-6).toUpperCase()}`,
-      orderId: order.id,
-    });
-  }
-
-  await updateChallengesForOrder(session.user.id, order);
 
   const message = buildWhatsappOrderMessage({
     orderId: order.id,

@@ -3,7 +3,7 @@ import { StatCard } from "@/components/admin/stat-card";
 import { SalesChart } from "@/components/admin/sales-chart";
 import { TopProductsChart } from "@/components/admin/top-products-chart";
 import { formatCOP } from "@/lib/utils";
-import { DollarSign, Users, Receipt, Award, TrendingUp, Gift } from "lucide-react";
+import { DollarSign, Users, Receipt, Stamp, TrendingUp, Gift } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +17,8 @@ export default async function AdminDashboardPage() {
     salesAgg,
     ordersThisMonth,
     newCustomers,
-    pointsAgg,
-    redemptionsCount,
+    stampsGivenCount,
+    rewardsReadyCount,
     ordersLast14Days,
     topProductsRaw,
     frequentCustomers,
@@ -31,8 +31,8 @@ export default async function AdminDashboardPage() {
     }),
     prisma.order.count({ where: { createdAt: { gte: startOfMonth } } }),
     prisma.user.count({ where: { role: "CLIENTE", createdAt: { gte: startOfMonth } } }),
-    prisma.pointsTransaction.aggregate({ where: { points: { gt: 0 } }, _sum: { points: true } }),
-    prisma.redemption.count(),
+    prisma.stampQR.count({ where: { status: "RECLAMADO" } }),
+    prisma.stampCard.count({ where: { rewardReady: true } }),
     prisma.order.findMany({
       where: { status: { not: "CANCELADO" }, createdAt: { gte: fourteenDaysAgo } },
       select: { total: true, createdAt: true },
@@ -81,8 +81,8 @@ export default async function AdminDashboardPage() {
         <StatCard label="Pedidos del mes" value={String(ordersThisMonth)} icon={Receipt} accent="mustard" />
         <StatCard label="Clientes nuevos" value={String(newCustomers)} icon={Users} accent="olive" />
         <StatCard label="Ticket promedio" value={formatCOP(Math.round(salesAgg._avg.total ?? 0))} icon={TrendingUp} />
-        <StatCard label="Puntos entregados" value={String(pointsAgg._sum.points ?? 0)} icon={Award} accent="mustard" />
-        <StatCard label="Canjes realizados" value={String(redemptionsCount)} icon={Gift} accent="olive" />
+        <StatCard label="Sellos entregados" value={String(stampsGivenCount)} icon={Stamp} accent="mustard" />
+        <StatCard label="Recompensas por entregar" value={String(rewardsReadyCount)} icon={Gift} accent="olive" />
         <StatCard label="Clientes frecuentes" value={String(frequentCustomers)} icon={Users} />
       </div>
 

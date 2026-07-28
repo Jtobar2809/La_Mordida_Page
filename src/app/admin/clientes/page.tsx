@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +6,9 @@ export const dynamic = "force-dynamic";
 export default async function AdminCustomersPage() {
   const customers = await prisma.user.findMany({
     where: { role: "CLIENTE" },
-    orderBy: { points: "desc" },
+    orderBy: { createdAt: "desc" },
     take: 200,
-    include: { level: true, _count: { select: { orders: true } } },
+    include: { _count: { select: { orders: true } }, stampCard: true },
   });
 
   return (
@@ -23,8 +22,7 @@ export default async function AdminCustomersPage() {
             <tr>
               <th className="px-4 py-3">Cliente</th>
               <th className="px-4 py-3">Contacto</th>
-              <th className="px-4 py-3">Nivel</th>
-              <th className="px-4 py-3">Puntos</th>
+              <th className="px-4 py-3">Sellos</th>
               <th className="px-4 py-3">Pedidos</th>
               <th className="px-4 py-3">Desde</th>
             </tr>
@@ -37,19 +35,18 @@ export default async function AdminCustomersPage() {
                   <p>{c.email}</p>
                   <p className="text-xs text-charcoal-400">{c.phone}</p>
                 </td>
-                <td className="px-4 py-3">
-                  <Badge variant="ember" style={{ backgroundColor: `${c.level?.color}20`, color: c.level?.color }}>
-                    {c.level?.name ?? "Bronce"}
-                  </Badge>
+                <td className="px-4 py-3 font-mono font-bold text-ember-600">
+                  {c.stampCard ? `${c.stampCard.currentStamps}/7` : "0/7"}
                 </td>
-                <td className="px-4 py-3 font-mono font-bold text-ember-600">{c.points}</td>
                 <td className="px-4 py-3">{c._count.orders}</td>
                 <td className="px-4 py-3 text-charcoal-400">{formatDate(c.createdAt)}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {customers.length === 0 && <p className="p-8 text-center text-sm text-charcoal-400">Aún no hay clientes registrados.</p>}
+        {customers.length === 0 && (
+          <p className="p-8 text-center text-sm text-charcoal-400">Aún no hay clientes registrados.</p>
+        )}
       </div>
     </div>
   );

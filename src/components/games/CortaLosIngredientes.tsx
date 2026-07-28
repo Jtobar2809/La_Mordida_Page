@@ -28,11 +28,11 @@ const TRAIL_MAX_POINTS = 8;
 const TRAIL_MAX_AGE_MS = 120;
 
 const INGREDIENTS = [
-  { emoji: "🍅", color: "#D64545" },
-  { emoji: "🧀", color: "#F0C94A" },
-  { emoji: "🥬", color: "#7BA05B" },
-  { emoji: "🥓", color: "#C1544B" },
-  { emoji: "🍞", color: "#D9A15C" },
+  { id: "tomato" },
+  { id: "cheese" },
+  { id: "lettuce" },
+  { id: "bacon" },
+  { id: "bun" },
 ] as const;
 
 // INGREDIENTS nunca está vacío (literal fijo de 5 elementos definido
@@ -40,17 +40,18 @@ const INGREDIENTS = [
 // del archivo, usada como fallback para cualquier índice fuera de rango.
 const FALLBACK_INGREDIENT = INGREDIENTS[0]!;
 
-type ItemKind = "ingredient" | "bomb";
+type IngredientId = (typeof INGREDIENTS)[number]["id"];
+type ItemKind = IngredientId | "bomb";
 type FlyingItem = {
   id: number;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  rotation: number;
+  rotationSpeed: number;
   radius: number;
   kind: ItemKind;
-  emoji: string;
-  color: string;
   sliced: boolean;
   slicedAt: number | null; // g.elapsedMs en el momento del corte, para el fade y la limpieza
   spawnedAt: number;
@@ -148,17 +149,17 @@ export function CortaLosIngredientes() {
     const vx = (Math.random() - 0.5) * 160;
     const vy = -(750 + Math.random() * 250); // impulso hacia arriba
 
-    const ing = INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)] ?? FALLBACK_INGREDIENT;
+    const ing = isBomb ? null : INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)] ?? FALLBACK_INGREDIENT;
     g.items.push({
       id: g.idCounter++,
       x,
       y: WORLD_HEIGHT + ITEM_RADIUS,
       vx,
       vy,
+      rotation: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 4,
       radius: ITEM_RADIUS,
-      kind: isBomb ? "bomb" : "ingredient",
-      emoji: isBomb ? "💣" : ing.emoji,
-      color: isBomb ? "#2a2a2a" : ing.color,
+      kind: isBomb ? "bomb" : (ing?.id ?? FALLBACK_INGREDIENT.id),
       sliced: false,
       slicedAt: null,
       spawnedAt: g.elapsedMs,
@@ -231,6 +232,7 @@ export function CortaLosIngredientes() {
         item.vy += GRAVITY * dt;
         item.x += item.vx * dt;
         item.y += item.vy * dt;
+        item.rotation += item.rotationSpeed * dt;
 
         // Detección de corte: ¿algún segmento reciente del trazo cruza este ítem?
         for (let i = 1; i < g.trail.length; i++) {
@@ -254,7 +256,7 @@ export function CortaLosIngredientes() {
         if (!item.sliced && item.y - item.radius > WORLD_HEIGHT) {
           item.sliced = true;
           item.slicedAt = g.elapsedMs;
-          if (item.kind === "ingredient") {
+          if (item.kind !== "bomb") {
             currentLives -= 1;
           }
         }
@@ -413,36 +415,170 @@ export function CortaLosIngredientes() {
 function draw(ctx: CanvasRenderingContext2D, g: GameRefState) {
   ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Fondo ambiental simple
-  ctx.fillStyle = "rgba(232,92,43,0.06)";
+  // Fondo con gradiente vertical
+  const bg = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
+  bg.addColorStop(0, "#2c1c14");
+  bg.addColorStop(1, "#1c130e");
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Ítems en vuelo
+  // Ítems en vuelo, dibujados vectorialmente (sin emojis)
   for (const item of g.items) {
     ctx.save();
-    ctx.globalAlpha = item.sliced ? 0.25 : 1;
+    ctx.globalAlpha = item.sliced ? 0.2 : 1;
     ctx.translate(item.x, item.y);
-    ctx.font = `${item.radius * 1.6}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(item.emoji, 0, 0);
+    ctx.rotate(item.rotation);
+
+    if (item.kind === "bomb") {
+      drawBomb(ctx, item.radius);
+    } else {
+      drawFlyingIngredient(ctx, item.kind, item.radius);
+    }
+
     ctx.restore();
   }
 
-  // Rastro del cursor (estela)
+  // Rastro del cursor: línea con grosor decreciente y brillo, como un corte de espada
   if (g.trail.length > 1) {
-    const first = g.trail[0];
-    if (first) {
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 4;
+    for (let i = 1; i < g.trail.length; i++) {
+      const a = g.trail[i - 1];
+      const b = g.trail[i];
+      if (!a || !b) continue;
+      const progress = i / g.trail.length; // 0 = más viejo, 1 = más reciente
+      ctx.strokeStyle = `rgba(255,255,255,${0.15 + progress * 0.7})`;
+      ctx.lineWidth = 2 + progress * 4;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(first.x, first.y);
-      for (let i = 1; i < g.trail.length; i++) {
-        const p = g.trail[i];
-        if (p) ctx.lineTo(p.x, p.y);
-      }
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
       ctx.stroke();
     }
   }
+}
+
+/** Bomba: esfera oscura metálica con mecha encendida */
+function drawBomb(ctx: CanvasRenderingContext2D, radius: number) {
+  const bodyGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, radius * 0.1, 0, 0, radius);
+  bodyGrad.addColorStop(0, "#4a4a4a");
+  bodyGrad.addColorStop(1, "#0f0f0f");
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius * 0.9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Brillo especular
+  ctx.fillStyle = "rgba(255,255,255,0.25)";
+  ctx.beginPath();
+  ctx.ellipse(-radius * 0.3, -radius * 0.35, radius * 0.22, radius * 0.14, -0.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mecha
+  ctx.strokeStyle = "#8C5A3F";
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(radius * 0.1, -radius * 0.85);
+  ctx.quadraticCurveTo(radius * 0.4, -radius * 1.15, radius * 0.25, -radius * 1.35);
+  ctx.stroke();
+
+  // Chispa en la punta de la mecha
+  const sparkGlow = ctx.createRadialGradient(radius * 0.25, -radius * 1.35, 0, radius * 0.25, -radius * 1.35, 6);
+  sparkGlow.addColorStop(0, "#FBE27A");
+  sparkGlow.addColorStop(1, "rgba(251,226,122,0)");
+  ctx.fillStyle = sparkGlow;
+  ctx.beginPath();
+  ctx.arc(radius * 0.25, -radius * 1.35, 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/** Dibuja cada ingrediente volando, con forma propia según su tipo */
+function drawFlyingIngredient(ctx: CanvasRenderingContext2D, kind: IngredientId, radius: number) {
+  const r = radius * 0.85;
+
+  if (kind === "tomato") {
+    const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.1, 0, 0, r);
+    grad.addColorStop(0, "#EA6B5C");
+    grad.addColorStop(1, "#C23B31");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#5E7440";
+    ctx.beginPath();
+    ctx.ellipse(0, -r * 0.75, r * 0.35, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+
+  if (kind === "cheese") {
+    const grad = ctx.createLinearGradient(-r, -r, r, r);
+    grad.addColorStop(0, "#FBE27A");
+    grad.addColorStop(1, "#E8B93A");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(-r, -r * 0.4);
+    ctx.lineTo(r, -r * 0.7);
+    ctx.lineTo(r * 0.7, r * 0.8);
+    ctx.lineTo(-r * 0.9, r * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
+
+  if (kind === "lettuce") {
+    const grad = ctx.createRadialGradient(-r * 0.2, -r * 0.2, r * 0.1, 0, 0, r);
+    grad.addColorStop(0, "#9CC178");
+    grad.addColorStop(1, "#6E8F4C");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(94,116,64,0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.5, -r * 0.3);
+    ctx.quadraticCurveTo(0, r * 0.2, r * 0.5, -r * 0.2);
+    ctx.stroke();
+    return;
+  }
+
+  if (kind === "bacon") {
+    const grad = ctx.createLinearGradient(-r, 0, r, 0);
+    grad.addColorStop(0, "#DB6E62");
+    grad.addColorStop(1, "#A93B30");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(-r, -r * 0.3);
+    ctx.quadraticCurveTo(0, -r * 0.9, r, -r * 0.2);
+    ctx.quadraticCurveTo(0, r * 0.9, -r, r * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(245,190,92,0.65)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.6, -r * 0.1);
+    ctx.quadraticCurveTo(0, -r * 0.5, r * 0.6, 0);
+    ctx.stroke();
+    return;
+  }
+
+  // bun (pan)
+  const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.1, 0, 0, r * 1.2);
+  grad.addColorStop(0, "#F5BE5C");
+  grad.addColorStop(1, "#D9A15C");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,246,232,0.85)";
+  const seeds: [number, number][] = [
+    [-r * 0.3, -r * 0.2],
+    [r * 0.1, -r * 0.4],
+    [r * 0.35, 0],
+  ];
+  seeds.forEach(([sx, sy]) => {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 1.6, 1, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
 }

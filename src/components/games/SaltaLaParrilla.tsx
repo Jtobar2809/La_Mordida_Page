@@ -331,48 +331,153 @@ export function SaltaLaParrilla() {
 function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number) {
   ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Fondo: brasas difusas ambientales, estáticas (el movimiento ya lo dan los tubos)
-  ctx.fillStyle = "rgba(232,92,43,0.08)";
+  // Fondo con gradiente vertical + viñeta
+  const sky = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
+  sky.addColorStop(0, "#2c1c14");
+  sky.addColorStop(1, "#1c130e");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+  // Brasas difusas ambientales, con resplandor real (no solo círculos planos)
   for (let i = 0; i < 5; i++) {
+    const bx = 60 + i * 90;
+    const by = 80 + (i % 2) * 40;
+    const emberGlow = ctx.createRadialGradient(bx, by, 0, bx, by, 34);
+    emberGlow.addColorStop(0, "rgba(232,92,43,0.22)");
+    emberGlow.addColorStop(1, "rgba(232,92,43,0)");
+    ctx.fillStyle = emberGlow;
     ctx.beginPath();
-    ctx.arc(60 + i * 90, 80 + (i % 2) * 40, 30, 0, Math.PI * 2);
+    ctx.arc(bx, by, 34, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // Parrillas (tubos) con hueco
   for (const pipe of g.pipes) {
-    const topHeight = pipe.gapY - PIPE_GAP / 2;
-    const bottomY = pipe.gapY + PIPE_GAP / 2;
-
-    ctx.fillStyle = "#3a2e28";
-    ctx.fillRect(pipe.x, 0, PIPE_WIDTH, topHeight);
-    ctx.fillRect(pipe.x, bottomY, PIPE_WIDTH, WORLD_HEIGHT - bottomY);
-
-    // Barras de parrilla (detalle visual) en ambos tramos
-    ctx.fillStyle = "#E85C2B";
-    for (let bar = 0; bar < 3; bar++) {
-      ctx.fillRect(pipe.x + 6, 14 + bar * 16, PIPE_WIDTH - 12, 3);
-      ctx.fillRect(pipe.x + 6, bottomY + 14 + bar * 16, PIPE_WIDTH - 12, 3);
-    }
+    drawPipe(ctx, pipe.x, pipe.gapY);
   }
 
   // Mordi
+  drawMordiFlyer(ctx, g);
+
+  // Viñeta sutil en los bordes para dar profundidad
+  const vignette = ctx.createRadialGradient(
+    WORLD_WIDTH / 2,
+    WORLD_HEIGHT / 2,
+    WORLD_HEIGHT * 0.3,
+    WORLD_WIDTH / 2,
+    WORLD_HEIGHT / 2,
+    WORLD_HEIGHT * 0.75
+  );
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.35)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+
+  // Puntaje
+  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillText(String(score), WORLD_WIDTH / 2 + 1, 45);
+  ctx.fillStyle = "#FBF6EE";
+  ctx.fillText(String(score), WORLD_WIDTH / 2, 44);
+}
+
+/** Par de tubos-parrilla con hueco central: rejilla, tapa metálica y sombra de profundidad */
+function drawPipe(ctx: CanvasRenderingContext2D, x: number, gapY: number) {
+  const topHeight = gapY - PIPE_GAP / 2;
+  const bottomY = gapY + PIPE_GAP / 2;
+
+  const bodyGrad = ctx.createLinearGradient(x, 0, x + PIPE_WIDTH, 0);
+  bodyGrad.addColorStop(0, "#2a1f1a");
+  bodyGrad.addColorStop(0.5, "#4a382f");
+  bodyGrad.addColorStop(1, "#2a1f1a");
+
+  // Tramo superior
+  ctx.fillStyle = bodyGrad;
+  ctx.fillRect(x, 0, PIPE_WIDTH, topHeight);
+  // Tramo inferior
+  ctx.fillRect(x, bottomY, PIPE_WIDTH, WORLD_HEIGHT - bottomY);
+
+  // Tapas metálicas en el borde del hueco (le dan grosor/profundidad al tubo)
+  ctx.fillStyle = "#5a4436";
+  ctx.fillRect(x - 4, topHeight - 14, PIPE_WIDTH + 8, 14);
+  ctx.fillRect(x - 4, bottomY, PIPE_WIDTH + 8, 14);
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - 4, topHeight - 14, PIPE_WIDTH + 8, 14);
+  ctx.strokeRect(x - 4, bottomY, PIPE_WIDTH + 8, 14);
+
+  // Rejilla (barras horizontales brillantes) en ambos tramos
+  ctx.fillStyle = "#E85C2B";
+  for (let bar = 0; bar < Math.floor(topHeight / 22); bar++) {
+    ctx.fillRect(x + 6, 10 + bar * 22, PIPE_WIDTH - 12, 3);
+  }
+  for (let bar = 0; bar < Math.floor((WORLD_HEIGHT - bottomY - 14) / 22); bar++) {
+    ctx.fillRect(x + 6, bottomY + 20 + bar * 22, PIPE_WIDTH - 12, 3);
+  }
+}
+
+/** Dibuja a Mordi volando: mismo diseño de cara que Mordi Runner, con giro según velocidad vertical */
+function drawMordiFlyer(ctx: CanvasRenderingContext2D, g: GameRefState) {
   ctx.save();
   ctx.translate(MORDI_X, g.mordiY);
   const tilt = Math.max(-0.4, Math.min(0.5, g.velocityY / 700));
   ctx.rotate(tilt);
-  ctx.fillStyle = "#F0A93A";
-  ctx.beginPath();
-  ctx.roundRect(-MORDI_SIZE / 2, -MORDI_SIZE / 2, MORDI_SIZE, MORDI_SIZE, 12);
-  ctx.fill();
-  ctx.fillStyle = "#1c1512";
-  ctx.beginPath();
-  ctx.arc(MORDI_SIZE / 4, -4, 3.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 
-  // Puntaje
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.font = "600 22px monospace";
-  ctx.fillText(String(score), 16, 34);
+  const r = MORDI_SIZE / 2;
+
+  // Cuerpo (forma de pan, igual estilo que Mordi Runner para consistencia visual)
+  const bodyGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.2, 0, 0, r * 1.3);
+  bodyGrad.addColorStop(0, "#F5BE5C");
+  bodyGrad.addColorStop(1, "#DE8A1B");
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(-r, r * 0.5);
+  ctx.quadraticCurveTo(-r, -r, 0, -r);
+  ctx.quadraticCurveTo(r, -r, r, r * 0.5);
+  ctx.quadraticCurveTo(r, r, 0, r);
+  ctx.quadraticCurveTo(-r, r, -r, r * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Semíllas de sésamo
+  ctx.fillStyle = "rgba(255,246,232,0.85)";
+  const seeds: [number, number][] = [
+    [-r * 0.35, -r * 0.55],
+    [0, -r * 0.7],
+    [r * 0.35, -r * 0.55],
+  ];
+  seeds.forEach(([sx, sy]) => {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 1.6, 1, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Mejillas
+  ctx.fillStyle = "rgba(232,92,43,0.35)";
+  ctx.beginPath();
+  ctx.arc(-r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
+  ctx.arc(r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ojos grandes y alerta (siempre en modo "vuelo", más abiertos que en Runner)
+  ctx.fillStyle = "#1B1712";
+  ctx.beginPath();
+  ctx.arc(-r * 0.28, -r * 0.05, 4.2, 0, Math.PI * 2);
+  ctx.arc(r * 0.28, -r * 0.05, 4.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#FBF6EE";
+  ctx.beginPath();
+  ctx.arc(-r * 0.28 + 1.4, -r * 0.05 - 1.4, 1.3, 0, Math.PI * 2);
+  ctx.arc(r * 0.28 + 1.4, -r * 0.05 - 1.4, 1.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Boca pequeña y redonda (sorpresa constante del vuelo)
+  ctx.strokeStyle = "#1B1712";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, r * 0.38, r * 0.14, r * 0.11, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
 }

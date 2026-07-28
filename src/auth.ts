@@ -4,9 +4,6 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { awardPoints } from "@/lib/points";
-import { getSettings } from "@/lib/settings";
-import { PointsType } from "@prisma/client";
 import { z } from "zod";
 
 const credentialsSchema = z.object({
@@ -56,22 +53,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   events: {
     async createUser({ user }) {
-      // Bono de bienvenida al registrarse (incluye registro vía Google)
-      if (!user.id) return;
-      const settings = await getSettings();
-      const bonus = Number(settings.welcomeBonusPoints) || 0;
-      if (bonus > 0) {
-        await awardPoints({
-          userId: user.id,
-          points: bonus,
-          type: PointsType.BONO_BIENVENIDA,
-          description: "Bono de bienvenida por registrarte",
-        });
-      }
-      if (user.email) {
-        const { sendWelcomeEmail } = await import("@/lib/email");
-        await sendWelcomeEmail(user.email, user.name ?? "cliente", bonus);
-      }
+      if (!user.id || !user.email) return;
+      const { sendWelcomeEmail } = await import("@/lib/email");
+      await sendWelcomeEmail(user.email, user.name ?? "cliente");
     },
   },
   callbacks: {

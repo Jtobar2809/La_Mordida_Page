@@ -49,8 +49,7 @@ export default async function OrdersPage() {
                 ))}
               </ul>
 
-              <div className="mt-3 flex items-center justify-between border-t border-charcoal-100 pt-3 dark:border-charcoal-700">
-                <span className="text-xs text-charcoal-400">+{order.pointsEarned} pts ganados</span>
+              <div className="mt-3 flex items-center justify-end border-t border-charcoal-100 pt-3 dark:border-charcoal-700">
                 <span className="font-mono font-bold text-ember-600">{formatCOP(order.total)}</span>
               </div>
             </Card>

@@ -55,17 +55,17 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
 }
 
 /** Correo de bienvenida al registrarse (opcional, se puede invocar desde events.createUser / registerUser) */
-export async function sendWelcomeEmail(to: string, name: string, bonusPoints: number) {
+export async function sendWelcomeEmail(to: string, name: string) {
   const html = wrapTemplate(
     `¡Bienvenido, ${name.split(" ")[0]}!`,
     `
-      <p style="color:#4E4436;line-height:1.6;">Tu cuenta ya está lista. Te regalamos <strong>${bonusPoints} puntos</strong> de bienvenida para tu primer canje.</p>
-      <p style="color:#4E4436;line-height:1.6;">Cada compra suma puntos, sube tu nivel y desbloquea recompensas reales.</p>
+      <p style="color:#4E4436;line-height:1.6;">Tu cuenta ya está lista. Pide en caja, escanea tu código QR después de cada compra y junta sellos en tu tarjeta digital.</p>
+      <p style="color:#4E4436;line-height:1.6;">Al completar 7 sellos, te regalamos una hamburguesa gratis.</p>
     `
   );
 
   if (!resend) {
-    console.log(`[email:dev] Bienvenida para ${to} (bono: ${bonusPoints} pts)`);
+    console.log(`[email:dev] Bienvenida para ${to}`);
     return { sent: false };
   }
 

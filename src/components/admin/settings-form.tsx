@@ -28,19 +28,6 @@ export function SettingsForm({ settings }: { settings: Settings }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Card className="space-y-4 p-6">
-        <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">PROGRAMA DE PUNTOS</h2>
-        <div>
-          <Label htmlFor="pointsPerPeso">Pesos gastados por cada punto</Label>
-          <Input id="pointsPerPeso" type="number" min={1} value={form.pointsPerPeso} onChange={(e) => setForm({ ...form, pointsPerPeso: e.target.value })} />
-          <p className="mt-1 text-xs text-charcoal-400">Ej: 1000 → cada $1.000 COP gastados = 1 punto.</p>
-        </div>
-        <div>
-          <Label htmlFor="welcomeBonusPoints">Bono de bienvenida al registrarse</Label>
-          <Input id="welcomeBonusPoints" type="number" min={0} value={form.welcomeBonusPoints} onChange={(e) => setForm({ ...form, welcomeBonusPoints: e.target.value })} />
-        </div>
-      </Card>
-
-      <Card className="space-y-4 p-6">
         <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">PEDIDOS</h2>
         <div>
           <Label htmlFor="deliveryFee">Costo de domicilio (COP)</Label>

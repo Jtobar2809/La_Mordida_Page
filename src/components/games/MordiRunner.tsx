@@ -347,19 +347,40 @@ export function MordiRunner() {
 function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number) {
   ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Fondo: colinas lejanas simples (parallax lento)
-  ctx.fillStyle = "rgba(232,92,43,0.12)";
+  // Cielo con gradiente vertical (en vez de depender solo del CSS de fondo)
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  sky.addColorStop(0, "#241812");
+  sky.addColorStop(1, "#3a2418");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, WORLD_WIDTH, GROUND_Y);
+
+  // Resplandor ambiental (sol/brasa lejana)
+  const glow = ctx.createRadialGradient(650, 70, 10, 650, 70, 140);
+  glow.addColorStop(0, "rgba(232,92,43,0.35)");
+  glow.addColorStop(1, "rgba(232,92,43,0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(500, -50, 300, 250);
+
+  // Colinas lejanas (parallax lento) con degradado propio
   for (let i = -1; i < 6; i++) {
     const x = i * 160 - g.bgOffset;
+    const hill = ctx.createRadialGradient(x, GROUND_Y - 10, 5, x, GROUND_Y - 10, 90);
+    hill.addColorStop(0, "rgba(232,92,43,0.22)");
+    hill.addColorStop(1, "rgba(232,92,43,0.02)");
+    ctx.fillStyle = hill;
     ctx.beginPath();
     ctx.ellipse(x, GROUND_Y - 10, 90, 40, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Suelo
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  // Suelo con textura de tabla de madera (líneas + veta sutil)
+  const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, WORLD_HEIGHT);
+  groundGrad.addColorStop(0, "#2b1d16");
+  groundGrad.addColorStop(1, "#1c130e");
+  ctx.fillStyle = groundGrad;
   ctx.fillRect(0, GROUND_Y, WORLD_WIDTH, WORLD_HEIGHT - GROUND_Y);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
   ctx.lineWidth = 2;
   ctx.setLineDash([18, 14]);
   ctx.lineDashOffset = -g.groundOffset;
@@ -369,37 +390,182 @@ function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Obstáculos ("parrillas": rejilla + brasa)
+  // Obstáculos: mini-parrillas con patas, rejilla y brasas brillantes
   for (const ob of g.obstacles) {
-    const x = ob.x;
-    const y = GROUND_Y - OBSTACLE_SIZE;
-    ctx.fillStyle = "#3a2e28";
-    ctx.fillRect(x, y, OBSTACLE_SIZE, OBSTACLE_SIZE);
-    ctx.fillStyle = "#E85C2B";
-    for (let bar = 0; bar < 3; bar++) {
-      ctx.fillRect(x + 4, y + 6 + bar * 9, OBSTACLE_SIZE - 8, 3);
-    }
+    drawGrillObstacle(ctx, ob.x, GROUND_Y);
   }
 
-  // Mordi (bounce sutil basado en si está en el suelo)
+  // Mordi
+  drawMordiRunner(ctx, g);
+
+  // Puntaje en canvas (respaldo visual, además del contador React de abajo)
+  ctx.font = "700 22px system-ui, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillText(String(score), 17, 33);
+  ctx.fillStyle = "#FBF6EE";
+  ctx.fillText(String(score), 16, 32);
+}
+
+/** Mini-parrilla con patas, rejilla metálica y brasas con resplandor */
+function drawGrillObstacle(ctx: CanvasRenderingContext2D, x: number, groundY: number) {
+  const w = OBSTACLE_SIZE;
+  const h = OBSTACLE_SIZE;
+  const y = groundY - h;
+
+  // Patas
+  ctx.strokeStyle = "#2a1f1a";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + h);
+  ctx.lineTo(x + 1, groundY - 2);
+  ctx.moveTo(x + w - 4, y + h);
+  ctx.lineTo(x + w - 1, groundY - 2);
+  ctx.stroke();
+
+  // Cuerpo de la parrilla
+  const body = ctx.createLinearGradient(x, y, x, y + h);
+  body.addColorStop(0, "#4a382f");
+  body.addColorStop(1, "#2a1f1a");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h * 0.62, 4);
+  ctx.fill();
+
+  // Brasas con resplandor (radial glow)
+  for (let i = 0; i < 3; i++) {
+    const bx = x + 6 + i * ((w - 12) / 2);
+    const by = y + h * 0.3;
+    const emberGlow = ctx.createRadialGradient(bx, by, 0, bx, by, 6);
+    emberGlow.addColorStop(0, "#FBE27A");
+    emberGlow.addColorStop(0.5, "#E85C2B");
+    emberGlow.addColorStop(1, "rgba(232,92,43,0)");
+    ctx.fillStyle = emberGlow;
+    ctx.beginPath();
+    ctx.arc(bx, by, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Rejilla (líneas verticales sobre las brasas)
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i < 4; i++) {
+    const lx = x + (w / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(lx, y + 2);
+    ctx.lineTo(lx, y + h * 0.6);
+    ctx.stroke();
+  }
+}
+
+/** Dibuja a Mordi corriendo: cuerpo tipo pan de hamburguesa, cara expresiva y piernas animadas */
+function drawMordiRunner(ctx: CanvasRenderingContext2D, g: GameRefState) {
   const bounce = g.onGround ? Math.sin(g.elapsedMs / 90) * 3 : 0;
+  const cx = MORDI_X + MORDI_SIZE / 2;
+  const cy = g.mordiY + MORDI_SIZE / 2 + bounce;
+
   ctx.save();
-  ctx.translate(MORDI_X + MORDI_SIZE / 2, g.mordiY + MORDI_SIZE / 2 + bounce);
+  ctx.translate(cx, cy);
   const tilt = g.onGround ? 0 : Math.max(-0.25, Math.min(0.25, g.velocityY / 3000));
   ctx.rotate(tilt);
-  ctx.fillStyle = "#F0A93A";
+
+  const r = MORDI_SIZE / 2;
+
+  // Sombra de contacto en el suelo (se achica y se desplaza al saltar)
+  ctx.save();
+  ctx.translate(-tilt * 40, r + 6);
+  const heightAboveGround = Math.max(0, GROUND_Y - (cy + r));
+  const shadowScale = Math.max(0.45, 1 - heightAboveGround / 90);
+  ctx.scale(shadowScale, 1);
+  ctx.fillStyle = `rgba(0,0,0,${0.28 * shadowScale})`;
   ctx.beginPath();
-  ctx.roundRect(-MORDI_SIZE / 2, -MORDI_SIZE / 2, MORDI_SIZE, MORDI_SIZE, 14);
-  ctx.fill();
-  ctx.fillStyle = "#1c1512";
-  ctx.beginPath();
-  ctx.arc(-8, -6, 4, 0, Math.PI * 2);
-  ctx.arc(10, -6, 4, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, r * 0.8, 5, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
-  // Puntaje en canvas (respaldo visual, además del contador React de abajo)
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.font = "600 20px monospace";
-  ctx.fillText(String(score), 16, 32);
+  // Piernas corriendo (alternan si está en el suelo; quietas y flexionadas en el aire)
+  const legPhase = g.onGround ? Math.sin(g.elapsedMs / 55) : 0;
+  ctx.strokeStyle = "#8C5A3F";
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.4, r * 0.7);
+  ctx.lineTo(-r * 0.4 + legPhase * 8, r * 0.7 + 10 - Math.abs(legPhase) * 4);
+  ctx.moveTo(r * 0.4, r * 0.7);
+  ctx.lineTo(r * 0.4 - legPhase * 8, r * 0.7 + 10 - Math.abs(legPhase) * 4);
+  ctx.stroke();
+
+  // Cuerpo (forma de pan: base recta, parte superior curva)
+  const bodyGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.2, 0, 0, r * 1.3);
+  bodyGrad.addColorStop(0, "#F5BE5C");
+  bodyGrad.addColorStop(1, "#DE8A1B");
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(-r, r * 0.5);
+  ctx.quadraticCurveTo(-r, -r, 0, -r);
+  ctx.quadraticCurveTo(r, -r, r, r * 0.5);
+  ctx.quadraticCurveTo(r, r, 0, r);
+  ctx.quadraticCurveTo(-r, r, -r, r * 0.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Semíllas de sésamo
+  ctx.fillStyle = "rgba(255,246,232,0.85)";
+  const seeds: [number, number][] = [
+    [-r * 0.35, -r * 0.55],
+    [0, -r * 0.7],
+    [r * 0.35, -r * 0.55],
+  ];
+  seeds.forEach(([sx, sy]) => {
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 1.6, 1, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Mejillas
+  ctx.fillStyle = "rgba(232,92,43,0.35)";
+  ctx.beginPath();
+  ctx.arc(-r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
+  ctx.arc(r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ojos (más cerrados/decididos al saltar, redondos al correr)
+  ctx.fillStyle = "#1B1712";
+  if (g.onGround) {
+    ctx.beginPath();
+    ctx.arc(-r * 0.3, -r * 0.05, 3.6, 0, Math.PI * 2);
+    ctx.arc(r * 0.3, -r * 0.05, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#FBF6EE";
+    ctx.beginPath();
+    ctx.arc(-r * 0.3 + 1.2, -r * 0.05 - 1.2, 1.1, 0, Math.PI * 2);
+    ctx.arc(r * 0.3 + 1.2, -r * 0.05 - 1.2, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = "#1B1712";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.42, -r * 0.05);
+    ctx.lineTo(-r * 0.18, -r * 0.05);
+    ctx.moveTo(r * 0.18, -r * 0.05);
+    ctx.lineTo(r * 0.42, -r * 0.05);
+    ctx.stroke();
+  }
+
+  // Boca
+  ctx.strokeStyle = "#1B1712";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  if (g.onGround) {
+    ctx.moveTo(-r * 0.28, r * 0.35);
+    ctx.quadraticCurveTo(0, r * 0.5, r * 0.28, r * 0.35);
+  } else {
+    ctx.ellipse(0, r * 0.4, r * 0.16, r * 0.12, 0, 0, Math.PI * 2);
+  }
+  ctx.stroke();
+
+  ctx.restore();
 }

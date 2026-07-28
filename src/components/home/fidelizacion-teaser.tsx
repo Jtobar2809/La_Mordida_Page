@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Flame, Gem, Award, Medal } from "lucide-react";
+import { Stamp, Gift, QrCode, Sparkles } from "lucide-react";
 import { AnimatedSection } from "@/components/animations/AnimatedSection";
 import { GradientBackground } from "@/components/layout/GradientBackground";
 import { GlowButton } from "@/components/ui/GlowButton";
@@ -10,11 +10,11 @@ import { Stagger } from "@/components/animations/Stagger";
 import { HoverScale } from "@/components/animations/HoverScale";
 import { Floating } from "@/components/animations/Floating";
 
-const niveles = [
-  { name: "Bronce", icon: Medal, color: "text-amber-700", desc: "Empiezas aquí" },
-  { name: "Plata", icon: Award, color: "text-slate-400", desc: "Descuentos exclusivos" },
-  { name: "Oro", icon: Flame, color: "text-mustard-400", desc: "Regalos de cumpleaños" },
-  { name: "Diamante", icon: Gem, color: "text-sky-300", desc: "Beneficios VIP" },
+const pasos = [
+  { name: "Compra", icon: QrCode, color: "text-mustard-400", desc: "Pide en caja y recibe tu código QR" },
+  { name: "Escanea", icon: Stamp, color: "text-ember-400", desc: "Suma un sello a tu tarjeta" },
+  { name: "Repite", icon: Sparkles, color: "text-sky-300", desc: "Junta 7 sellos en total" },
+  { name: "Disfruta", icon: Gift, color: "text-amber-400", desc: "Una hamburguesa gratis te espera" },
 ];
 
 export function FidelizacionTeaser() {
@@ -25,15 +25,15 @@ export function FidelizacionTeaser() {
       <div className="container-lm relative">
         <div className="grid grid-cols-1 items-center gap-14 lg:grid-cols-2">
           <Reveal>
-            <p className="eyebrow mb-3">Programa de fidelización</p>
+            <p className="eyebrow mb-3">Tarjeta de sellos</p>
             <h2 className="font-display text-4xl leading-tight tracking-wide sm:text-5xl">
               CADA MORDIDA
               <br />
-              <span className="text-ember-500">SUMA PUNTOS.</span>
+              <span className="text-ember-500">SUMA UN SELLO.</span>
             </h2>
             <p className="mt-6 max-w-md text-charcoal-200">
-              Regístrate, pide y acumula puntos con cada compra. Sube de nivel, completa desafíos y canjéalos por
-              hamburguesas, papas, bebidas y premios especiales.
+              Regístrate, pide en caja y escanea tu código QR después de cada compra. Junta 7 sellos y te regalamos
+              una hamburguesa gratis.
             </p>
             <Link href="/registro">
               <GlowButton className="mt-8">Únete gratis</GlowButton>
@@ -41,7 +41,7 @@ export function FidelizacionTeaser() {
           </Reveal>
 
           <Stagger className="grid grid-cols-2 gap-4">
-            {niveles.map(({ name, icon: Icon, color, desc }) => (
+            {pasos.map(({ name, icon: Icon, color, desc }) => (
               <Reveal key={name}>
                 <HoverScale>
                   <Floating>

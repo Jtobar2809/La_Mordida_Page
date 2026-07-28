@@ -2,15 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Gift, Trophy, UserRound, Stamp } from "lucide-react";
+import { LayoutDashboard, Package, UserRound, Stamp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/cuenta", label: "Resumen", icon: LayoutDashboard },
   { href: "/cuenta/pedidos", label: "Mis pedidos", icon: Package },
   { href: "/cuenta/sellos", label: "Tarjeta de sellos", icon: Stamp },
-  { href: "/cuenta/recompensas", label: "Recompensas", icon: Gift },
-  { href: "/cuenta/desafios", label: "Desafíos", icon: Trophy },
   { href: "/cuenta/perfil", label: "Mi perfil", icon: UserRound },
 ];
 

@@ -8,6 +8,16 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Leaderboard } from "@/components/games/Leaderboard";
+import {
+  IconBun,
+  IconBunDouble,
+  IconCheese,
+  IconTomato,
+  IconLettuce,
+  IconPatty,
+  IconBacon,
+  IconBurgerComplete,
+} from "@/components/games/IngredientIcons";
 import { submitGameScoreAction } from "@/actions/games";
 
 const GAME_SLUG = "combo-perfecto";
@@ -18,15 +28,18 @@ const GRID_SIZE = 4;
 // Niveles del ingrediente, en orden de fusión: 2 "Pan" se fusionan en 1
 // "Pan doble", 2 "Pan doble" en "Carne", etc. — hasta llegar a la
 // hamburguesa completa (nivel máximo), que es la "meta" visual del juego.
+// Iconos SVG propios en vez de emojis (consistencia visual entre
+// sistemas operativos), con gradiente de 2 tonos por nivel para dar
+// sensación de profundidad en vez de bloques de color plano.
 const LEVELS = [
-  { label: "Pan", emoji: "🥖", color: "#E8C989" },
-  { label: "Pan x2", emoji: "🍞", color: "#D9A15C" },
-  { label: "Queso", emoji: "🧀", color: "#F0C94A" },
-  { label: "Tomate", emoji: "🍅", color: "#D64545" },
-  { label: "Lechuga", emoji: "🥬", color: "#7BA05B" },
-  { label: "Carne", emoji: "🥩", color: "#6B3A2A" },
-  { label: "Tocino", emoji: "🥓", color: "#C1544B" },
-  { label: "¡Mordida!", emoji: "🍔", color: "#E85C2B" },
+  { label: "Pan", Icon: IconBun, from: "#F2D9A0", to: "#E0AD5C" },
+  { label: "Pan x2", Icon: IconBunDouble, from: "#E8C083", to: "#C88B3E" },
+  { label: "Queso", Icon: IconCheese, from: "#FBE27A", to: "#E8B93A" },
+  { label: "Tomate", Icon: IconTomato, from: "#EA6B5C", to: "#C23B31" },
+  { label: "Lechuga", Icon: IconLettuce, from: "#9CC178", to: "#6E8F4C" },
+  { label: "Carne", Icon: IconPatty, from: "#8A5237", to: "#5C3320" },
+  { label: "Tocino", Icon: IconBacon, from: "#DB6E62", to: "#A93B30" },
+  { label: "¡Mordida!", Icon: IconBurgerComplete, from: "#F0A05C", to: "#E85C2B" },
 ] as const;
 
 // LEVELS nunca está vacío (es un literal fijo definido arriba, con 8
@@ -311,6 +324,7 @@ export function ComboPerfecto() {
                 <AnimatePresence mode="popLayout">
                   {cell !== null && (() => {
                     const level = LEVELS[cell] ?? FALLBACK_LEVEL;
+                    const Icon = level.Icon;
                     return (
                       <motion.div
                         key={`${r}-${c}-${cell}-${pulse}`}
@@ -318,10 +332,10 @@ export function ComboPerfecto() {
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.5, opacity: 0 }}
                         transition={{ type: "spring", stiffness: 400, damping: 26 }}
-                        className="absolute inset-0 flex flex-col items-center justify-center rounded-lg text-white shadow-sm"
-                        style={{ backgroundColor: level.color }}
+                        className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 shadow-md ring-1 ring-black/10"
+                        style={{ background: `linear-gradient(160deg, ${level.from}, ${level.to})` }}
                       >
-                        <span className="text-lg leading-none sm:text-xl">{level.emoji}</span>
+                        <Icon className="h-2/3 w-2/3 drop-shadow-sm" />
                       </motion.div>
                     );
                   })()}

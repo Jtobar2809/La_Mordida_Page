@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Leaderboard } from "@/components/games/Leaderboard";
+import { MordiSprite } from "@/components/games/MordiSprite";
 import { submitGameScoreAction } from "@/actions/games";
 import { cn } from "@/lib/utils";
 
@@ -47,10 +47,12 @@ function comboColor(combo: number) {
 /**
  * Minijuego "Atrapa la Mordida": Mordi aparece en una celda aleatoria de
  * una grilla 3x3 por una ventana de tiempo que se acorta con cada
- * acierto (dificultad progresiva). Puramente recreativo — sin física ni
- * Canvas, solo React state + setTimeout — pero con feedback exagerado
- * (racha con color, "+1" flotante, celebración de récord) para que se
- * sienta satisfactorio y dé ganas de reintentar.
+ * acierto (dificultad progresiva). El personaje se dibuja con
+ * MordiSprite (SVG inline), no con la imagen PNG — dentro del
+ * motion.div animado del pop-in, next/image con fill no siempre
+ * resolvía su tamaño a tiempo y Mordi terminaba invisible; el SVG
+ * inline no tiene ese problema porque no depende de una petición de
+ * red ni del layout del contenedor.
  */
 export function AtrapaLaMordida() {
   const { data: session } = useSession();
@@ -177,74 +179,83 @@ export function AtrapaLaMordida() {
 
   return (
     <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-      <Card className="p-6 text-center">
-        <h3 className="font-display text-2xl tracking-wide text-charcoal-900 dark:text-cream">ATRAPA LA MORDIDA</h3>
-        <p className="mt-1 text-sm text-charcoal-500 dark:text-charcoal-300">
-          Toca a Mordi antes de que se escape. ¡Se pone más rápido con cada acierto!
-        </p>
+      <Card className="overflow-hidden p-0 text-center">
+        <div className="bg-char-gradient px-6 pb-16 pt-6 text-cream">
+          <h3 className="font-display text-2xl tracking-wide">ATRAPA LA MORDIDA</h3>
+          <p className="mt-1 text-sm text-charcoal-200">
+            Toca a Mordi antes de que se escape. ¡Se pone más rápido con cada acierto!
+          </p>
 
-        <div className="mt-5 flex items-center justify-between text-sm font-semibold text-charcoal-700 dark:text-charcoal-200">
-          <span>Puntaje: {score}</span>
-          <AnimatePresence mode="wait">
-            {combo >= 3 && state === "playing" && (
-              <motion.span
-                key={combo}
-                initial={{ scale: 0.6, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.6, opacity: 0 }}
-                className={cn("flex items-center gap-1", comboColor(combo))}
-              >
-                <Sparkles className="h-4 w-4" /> Racha x{combo}
-              </motion.span>
+          <div className="mt-5 flex items-center justify-between text-sm font-semibold">
+            <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm">Puntaje: {score}</span>
+            <AnimatePresence mode="wait">
+              {combo >= 3 && state === "playing" && (
+                <motion.span
+                  key={combo}
+                  initial={{ scale: 0.6, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.6, opacity: 0 }}
+                  className={cn("flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm", comboColor(combo))}
+                >
+                  <Sparkles className="h-4 w-4" /> Racha x{combo}
+                </motion.span>
+              )}
+            </AnimatePresence>
+            {state === "playing" && (
+              <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm">
+                <Timer className="h-3.5 w-3.5" /> {timeLeft}s
+              </span>
             )}
-          </AnimatePresence>
-          <span>{state === "playing" ? `⏱ ${timeLeft}s` : null}</span>
+          </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {Array.from({ length: GRID_SIZE }).map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => handleCellClick(i)}
-              disabled={state !== "playing"}
-              className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-charcoal-100 bg-charcoal-50 disabled:cursor-default dark:border-charcoal-700 dark:bg-charcoal-800"
-            >
-              <AnimatePresence>
-                {activeCell === i && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0, rotate: -8 }}
-                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    transition={{ duration: 0.15, ease: "backOut" }}
-                    className="absolute inset-1"
-                  >
-                    <Image src="/MordiSinFondo.png" alt="Mordi" fill className="object-contain" sizes="120px" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {floatingPlus
-                  .filter((p) => p.cell === i)
-                  .map((p) => (
-                    <motion.span
-                      key={p.id}
-                      initial={{ opacity: 1, y: 0, scale: 0.8 }}
-                      animate={{ opacity: 0, y: -36, scale: 1.2 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.6, ease: "easeOut" }}
-                      className="pointer-events-none absolute inset-0 flex items-center justify-center font-display text-2xl text-ember-500"
+        {/* Tablero — se solapa sobre el header oscuro con sombra elevada */}
+        <div className="-mt-10 px-6 pb-6">
+          <div className="grid grid-cols-3 gap-3 rounded-2xl bg-white p-3 shadow-premium dark:bg-charcoal-800">
+            {Array.from({ length: GRID_SIZE }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handleCellClick(i)}
+                disabled={state !== "playing"}
+                className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b from-charcoal-50 to-charcoal-100 shadow-inner disabled:cursor-default dark:from-charcoal-900/60 dark:to-charcoal-900"
+              >
+                <AnimatePresence>
+                  {activeCell === i && (
+                    <motion.div
+                      initial={{ scale: 0, opacity: 0, rotate: -12, y: 10 }}
+                      animate={{ scale: 1, opacity: 1, rotate: 0, y: 0 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: "backOut" }}
+                      className="absolute inset-1.5 drop-shadow-lg"
                     >
-                      +1
-                    </motion.span>
-                  ))}
-              </AnimatePresence>
-            </button>
-          ))}
+                      <MordiSprite expression="surprised" className="h-full w-full" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {floatingPlus
+                    .filter((p) => p.cell === i)
+                    .map((p) => (
+                      <motion.span
+                        key={p.id}
+                        initial={{ opacity: 1, y: 0, scale: 0.8 }}
+                        animate={{ opacity: 0, y: -36, scale: 1.2 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-display text-2xl text-ember-500 drop-shadow"
+                      >
+                        +1
+                      </motion.span>
+                    ))}
+                </AnimatePresence>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="mt-6">
+        <div className="px-6 pb-6">
           {state === "idle" && (
             <Button onClick={startGame} size="lg" className="w-full">
               Jugar

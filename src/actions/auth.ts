@@ -28,26 +28,12 @@ export async function registerUser(input: unknown): Promise<ActionResult> {
 
   const hashed = await bcrypt.hash(password, 10);
 
-  const user = await prisma.user.create({
+  await prisma.user.create({
     data: { name, email, phone, password: hashed, role: "CLIENTE" },
   });
 
-  // Bono de bienvenida (el mismo que se aplica en registro con Google, ver src/auth.ts events.createUser)
-  const { getSettings } = await import("@/lib/settings");
-  const { awardPoints } = await import("@/lib/points");
-  const settings = await getSettings();
-  const bonus = Number(settings.welcomeBonusPoints) || 0;
-  if (bonus > 0) {
-    await awardPoints({
-      userId: user.id,
-      points: bonus,
-      type: "BONO_BIENVENIDA",
-      description: "Bono de bienvenida por registrarte",
-    });
-  }
-
   const { sendWelcomeEmail } = await import("@/lib/email");
-  await sendWelcomeEmail(email, name, bonus);
+  await sendWelcomeEmail(email, name);
 
   return { success: true };
 }
