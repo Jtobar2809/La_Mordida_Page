@@ -39,13 +39,13 @@ export const metadata: Metadata = {
   description:
     "Hamburguesas y perros calientes artesanales en Popayán. Pide en línea y acumula puntos con cada compra.",
 
-  metadataBase: new URL("https://TU-DOMINIO.com"),
+  metadataBase: new URL(siteUrl),
 
   openGraph: {
     title: "La Mordida",
     description:
       "Hamburguesas y perros calientes artesanales en Popayán.",
-    url: "https://la-mordida.vercel.app",
+    url: siteUrl,
     siteName: "La Mordida",
     locale: "es_CO",
     type: "website",
@@ -82,7 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
-      <body className="font-body" suppressHydrationWarning>
+      <body className="font-body">
         <PageReveal />
         <ScrollProgress />
         <CustomCursor />

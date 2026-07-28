@@ -37,7 +37,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
   );
 
   if (!resend) {
-    console.log(`[email:dev] Recuperar contraseña para ${to}: ${resetUrl}`);
+    if (process.env.NODE_ENV === "development") console.debug(`[email:dev] Recuperar contraseña para ${to}: ${resetUrl}`);
     return { sent: false, reason: "RESEND_API_KEY no configurada (modo desarrollo)" };
   }
 
@@ -65,7 +65,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
   );
 
   if (!resend) {
-    console.log(`[email:dev] Bienvenida para ${to}`);
+    if (process.env.NODE_ENV === "development") console.debug(`[email:dev] Bienvenida para ${to}`);
     return { sent: false };
   }
 
