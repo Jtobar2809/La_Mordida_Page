@@ -93,6 +93,8 @@ export function Navbar() {
               <div className="relative hidden md:block">
                 <button
                   onClick={() => setUserMenuOpen((v) => !v)}
+                  aria-expanded={userMenuOpen}
+                  aria-controls="user-menu"
                   className="flex h-10 w-10 items-center justify-center rounded-full bg-charcoal-100 text-charcoal-700 transition-colors hover:bg-charcoal-200 dark:bg-charcoal-700 dark:text-cream"
                 >
                   <User className="h-5 w-5" />
@@ -100,6 +102,7 @@ export function Navbar() {
                 <AnimatePresence>
                   {userMenuOpen && (
                     <motion.div
+                      id="user-menu"
                       initial={{ opacity: 0, y: -8 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
