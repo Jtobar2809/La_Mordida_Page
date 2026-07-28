@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import { Bebas_Neue, Plus_Jakarta_Sans, Space_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { VisualHelpers } from "@/components/VisualHelpers";
 import "./globals.css";
-
-// Lazy-load non-essential client-side visual helpers to reduce first load JS
-const PageReveal = dynamic(() => import("@/components/animations/PageReveal").then((m) => m.PageReveal), { ssr: false });
-const ScrollProgress = dynamic(() => import("@/components/animations/ScrollProgress").then((m) => m.ScrollProgress), { ssr: false });
-const CustomCursor = dynamic(() => import("@/components/animations/CustomCursor").then((m) => m.CustomCursor), { ssr: false });
-const PageTransition = dynamic(() => import("@/components/animations/PageTransition").then((m) => m.PageTransition), { ssr: false });
-
 const display = Bebas_Neue({
   subsets: ["latin"],
   weight: "400",
@@ -86,12 +79,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body className="font-body">
-        <PageReveal />
-        <ScrollProgress />
-        <CustomCursor />
-        <Providers>
-          <PageTransition>{children}</PageTransition>
-        </Providers>
+        <VisualHelpers>
+          <Providers>
+            {children}
+          </Providers>
+        </VisualHelpers>
       </body>
     </html>
   );
