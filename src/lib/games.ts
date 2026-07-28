@@ -115,7 +115,9 @@ export async function getUserRank(
 
   const index = ranked.findIndex((r) => r.userId === userId);
   if (index === -1) return null;
-  return { rank: index + 1, bestScore: ranked[index].bestScore };
+  const best = ranked[index];
+  if (!best) return null;
+  return { rank: index + 1, bestScore: best.bestScore };
 }
 
 function periodToDate(period: LeaderboardPeriod): Date | null {
