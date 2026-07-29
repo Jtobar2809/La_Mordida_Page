@@ -112,14 +112,7 @@ export function Navbar() {
                         <p className="font-semibold text-charcoal-900 dark:text-cream">{session.user.name}</p>
                         <p className="truncate text-xs text-charcoal-400">{session.user.email}</p>
                       </div>
-                      <Link
-                        href="/cuenta"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-charcoal-700 hover:bg-charcoal-50 dark:text-cream dark:hover:bg-charcoal-700"
-                      >
-                        <LayoutDashboard className="h-4 w-4" /> Mi cuenta
-                      </Link>
-                      {session.user.role === "ADMIN" && (
+                      {session.user.role === "ADMIN" ? (
                         <Link
                           href="/admin"
                           onClick={() => setUserMenuOpen(false)}
@@ -127,9 +120,17 @@ export function Navbar() {
                         >
                           <LayoutDashboard className="h-4 w-4" /> Panel admin
                         </Link>
+                      ) : (
+                        <Link
+                          href="/cuenta"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-sm text-charcoal-700 hover:bg-charcoal-50 dark:text-cream dark:hover:bg-charcoal-700"
+                        >
+                          <LayoutDashboard className="h-4 w-4" /> Mi cuenta
+                        </Link>
                       )}
                       <button
-                        onClick={() => signOut({ callbackUrl: "/" })}
+                        onClick={() => signOut({ callbackUrl: "/login" })}
                         className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                       >
                         <LogOut className="h-4 w-4" /> Cerrar sesión
@@ -198,19 +199,20 @@ export function Navbar() {
               <div className="mt-auto flex flex-col gap-3">
                 {session?.user ? (
                   <>
-                    <Link href="/cuenta" onClick={() => setOpen(false)}>
-                      <Button variant="secondary" className="w-full">
-                        Mi cuenta
-                      </Button>
-                    </Link>
-                    {session.user.role === "ADMIN" && (
+                    {session.user.role === "ADMIN" ? (
                       <Link href="/admin" onClick={() => setOpen(false)}>
-                        <Button variant="outline" className="w-full">
+                        <Button variant="secondary" className="w-full">
                           Panel admin
                         </Button>
                       </Link>
+                    ) : (
+                      <Link href="/cuenta" onClick={() => setOpen(false)}>
+                        <Button variant="secondary" className="w-full">
+                          Mi cuenta
+                        </Button>
+                      </Link>
                     )}
-                    <Button variant="ghost" onClick={() => signOut({ callbackUrl: "/" })}>
+                    <Button variant="ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
                       Cerrar sesión
                     </Button>
                   </>
