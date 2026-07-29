@@ -57,6 +57,9 @@ export function BannersManager({ banners }: { banners: Banner[] }) {
                   <Badge variant={banner.active ? "olive" : "charcoal"}>{banner.active ? "Visible" : "Oculto"}</Badge>
                 </button>
               </div>
+              <Badge variant={banner.placement === "HERO" ? "ember" : "charcoal"} className="mb-2">
+                {banner.placement === "HERO" ? "Carrusel del inicio" : "Promociones"}
+              </Badge>
               {banner.subtitle && <p className="text-sm text-charcoal-400">{banner.subtitle}</p>}
               <div className="mt-3 flex justify-end gap-2">
                 <Button size="icon" variant="ghost" onClick={() => setEditing(banner)} aria-label="Editar">

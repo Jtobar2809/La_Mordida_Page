@@ -74,7 +74,7 @@ async function main() {
     {
       name: "La Clásica",
       slug: "la-clasica",
-      description: "Pan brioche, carne artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo de la casa.",
       price: 20000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Aderezo"],
@@ -85,7 +85,7 @@ async function main() {
     {
       name: "Aloha",
       slug: "aloha",
-      description: "Pan brioche, carne artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate, piña asada y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate, piña asada y aderezo de la casa.",
       price: 22000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Piña asada", "Aderezo"],
@@ -96,7 +96,7 @@ async function main() {
     {
       name: "Bacon Boom",
       slug: "bacon-boom",
-      description: "Pan brioche, carne artesanal, cebolla caramelizada, jamón, queso fundido, tocineta, lechuga, tomate y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, carne 100% artesanal, cebolla caramelizada, jamón, queso fundido, tocineta, lechuga, tomate y aderezo de la casa.",
       price: 24000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Tocineta", "Lechuga", "Tomate", "Aderezo"],
@@ -107,7 +107,7 @@ async function main() {
     {
       name: "Doble Impacto",
       slug: "doble-impacto",
-      description: "Pan brioche, doble carne artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, doble carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo de la casa.",
       price: 24000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Doble carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Aderezo"],
@@ -118,7 +118,7 @@ async function main() {
     {
       name: "Crunch",
       slug: "crunch",
-      description: "Pan brioche, carne artesanal, cebolla caramelizada, jamón, queso fundido, tocineta, cebolla crispy, lechuga, tomate y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, tocineta, cebolla crispy, lechuga, tomate y aderezo de la casa.",
       price: 26000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Tocineta", "Cebolla crispy", "Lechuga", "Tomate", "Aderezo"],
@@ -129,7 +129,7 @@ async function main() {
     {
       name: "Triple Impacto",
       slug: "triple-impacto",
-      description: "Pan brioche, triple carne artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo.",
+      description: "Pan brioche sellado en mantequilla de ajo, triple carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo de la casa.",
       price: 28000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Triple carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Aderezo"],
@@ -140,10 +140,10 @@ async function main() {
     {
       name: "La Mordida",
       slug: "la-mordida",
-      description: "Pan negro, carne artesanal, cebolla crispy o caramelizada (a elección), jamón, queso fundido, queso doble crema, queso mozzarella, tocineta, chorizo, lechuga, tomate y aderezo.",
+      description: "Pan pretzel sellado en mantequilla de ajo, carne 100% artesanal, cebolla crispy o caramelizada (a elección), jamón, queso fundido, queso doble crema, queso mozzarella, tocineta, chorizo, lechuga, tomate y aderezo de la casa.",
       price: 32000,
       categorySlug: "hamburguesas",
-      ingredients: ["Pan negro", "Carne artesanal", "Cebolla crispy o caramelizada", "Jamón", "Queso fundido", "Queso doble crema", "Queso mozzarella", "Tocineta", "Chorizo", "Lechuga", "Tomate", "Aderezo"],
+      ingredients: ["Pan pretzel", "Carne artesanal", "Cebolla crispy o caramelizada", "Jamón", "Queso fundido", "Queso doble crema", "Queso mozzarella", "Tocineta", "Chorizo", "Lechuga", "Tomate", "Aderezo"],
       featured: true,
       spicyLevel: 0,
       extras: [],
@@ -204,17 +204,6 @@ async function main() {
       extras: [],
     },
     {
-      name: "Combo Ahumada BBQ",
-      slug: "combo-ahumada-bbq",
-      description: "La Ahumada BBQ + papas a la francesa + gaseosa 250ml.",
-      price: 38000,
-      categorySlug: "combos",
-      ingredients: ["La Ahumada BBQ", "Papas a la francesa", "Gaseosa 250ml"],
-      featured: false,
-      spicyLevel: 0,
-      extras: [],
-    },
-    {
       name: "Papas a la francesa",
       slug: "papas-a-la-francesa",
       description: "Papas crocantes por fuera, suaves por dentro, sazonadas con nuestras especias artesanales.",
@@ -224,17 +213,6 @@ async function main() {
       featured: false,
       spicyLevel: 0,
       extras: [{ name: "Con queso cheddar", price: 3500 }],
-    },
-    {
-      name: "Aros de cebolla",
-      slug: "aros-de-cebolla",
-      description: "Aros de cebolla empanizados y fritos hasta quedar dorados y crocantes.",
-      price: 10000,
-      categorySlug: "acompanamientos",
-      ingredients: ["Cebolla", "Empanizado artesanal"],
-      featured: false,
-      spicyLevel: 0,
-      extras: [],
     },
     {
       name: "La Mini Clásica",
@@ -514,6 +492,19 @@ async function main() {
     if (!existing) await prisma.banner.create({ data: banner });
   }
   console.log("✅ Banners de ejemplo creados");
+
+  // ── Galería de ejemplo ───────────────────────────────
+  const galleryData = [
+    { image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=800", alt: "Hamburguesa artesanal doble", order: 0, active: true },
+    { image: "https://images.unsplash.com/photo-1550317138-10000687a72b?q=80&w=600", alt: "Perro caliente artesanal", order: 1, active: true },
+    { image: "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?q=80&w=600", alt: "Papas a la francesa", order: 2, active: true },
+    { image: "https://images.unsplash.com/photo-1610614819513-58e34989e371?q=80&w=600", alt: "Carne a la parrilla", order: 3, active: true },
+  ];
+  for (const g of galleryData) {
+    const existing = await prisma.galleryImage.findFirst({ where: { image: g.image } });
+    if (!existing) await prisma.galleryImage.create({ data: g });
+  }
+  console.log("✅ Galería de ejemplo creada");
 
   console.log("🎉 Listo. Datos de La Mordida sembrados con éxito.");
 }

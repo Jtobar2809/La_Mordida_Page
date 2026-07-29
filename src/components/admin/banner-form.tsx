@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ImageUploader } from "@/components/admin/image-uploader";
 import { upsertBanner } from "@/actions/admin/banners";
@@ -17,6 +18,7 @@ export function BannerForm({ banner, onDone }: { banner: Banner | null; onDone: 
     link: banner?.link ?? "",
     order: banner?.order ?? 0,
     active: banner?.active ?? true,
+    placement: banner?.placement ?? "PROMOCIONES",
   });
   const [loading, setLoading] = React.useState(false);
 
@@ -34,6 +36,17 @@ export function BannerForm({ banner, onDone }: { banner: Banner | null; onDone: 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <ImageUploader value={form.image} onChange={(url) => setForm({ ...form, image: url })} label="Imagen del banner (recomendado 1200x600)" />
+      <div>
+        <Label htmlFor="placement">Ubicación</Label>
+        <Select
+          id="placement"
+          value={form.placement}
+          onChange={(e) => setForm({ ...form, placement: e.target.value as "HERO" | "PROMOCIONES" })}
+        >
+          <option value="HERO">Carrusel del inicio (Hero)</option>
+          <option value="PROMOCIONES">Sección de Promociones</option>
+        </Select>
+      </div>
       <div>
         <Label htmlFor="title">Título</Label>
         <Input id="title" required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ej: 2x1 en perros artesanales" />

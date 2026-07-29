@@ -13,7 +13,7 @@ import { Galeria } from "@/components/home/galeria";
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const [featuredProducts, reviews, banners] = await Promise.all([
+  const [featuredProducts, reviews, banners, galleryImages] = await Promise.all([
     prisma.product.findMany({
       where: { featured: true, available: true },
       take: 6,
@@ -28,7 +28,18 @@ export default async function HomePage() {
       where: { active: true },
       orderBy: { order: "asc" },
     }),
+    prisma.galleryImage.findMany({
+      where: { active: true },
+      orderBy: { order: "asc" },
+    }),
   ]);
+
+  const galleryImagesClean = galleryImages.map((g) => ({
+    id: g.id,
+    image: g.image,
+    alt: g.alt ?? undefined,
+    order: g.order,
+  }));
 
   return (
     <>
@@ -41,7 +52,7 @@ export default async function HomePage() {
         <PorQueElegirnos />
         <FidelizacionTeaser />
         <Resenas reviews={reviews} />
-        <Galeria />
+        <Galeria images={galleryImagesClean} />
       </main>
       <Footer />
     </>

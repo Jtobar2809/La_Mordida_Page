@@ -313,11 +313,24 @@ model Coupon {
 }
 
 model Banner {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   title     String
   subtitle  String?
   image     String
   link      String?
+  order     Int           @default(0)
+  active    Boolean       @default(true)
+  placement BannerPlacement @default(PROMOCIONES)
+  createdAt DateTime      @default(now())
+
+  @@index([order])
+  @@index([placement])
+}
+
+model GalleryImage {
+  id        String   @id @default(cuid())
+  image     String
+  alt       String?
   order     Int      @default(0)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -438,4 +451,9 @@ enum StampQRStatus {
   PENDIENTE
   RECLAMADO
   EXPIRADO
+}
+
+enum BannerPlacement {
+  HERO
+  PROMOCIONES
 }
