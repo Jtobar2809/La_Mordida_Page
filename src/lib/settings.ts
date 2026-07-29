@@ -4,7 +4,7 @@ export const DEFAULT_SETTINGS = {
   pointsPerPeso: "1000", // 1000 pesos gastados = 1 punto
   deliveryFee: "5000",
   taxRate: "0", // porcentaje, 0 si los precios ya incluyen impuestos
-  whatsappNumber: "573000000000",
+  whatsappNumber: "573108325015",
   storeAddress: "Cra. 12 #34-56, Popayán, Cauca",
   storeSchedule: "Lun a Dom, 11:00 a.m. – 10:00 p.m.",
   storeLat: "2.4448",

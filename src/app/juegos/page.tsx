@@ -1,6 +1,6 @@
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
-import { GamesHub } from "@/components/games/GamesHub";
+import GamesHubClient from "@/components/GamesHubClient";
 
 export const metadata = {
   title: "Juegos",
@@ -23,7 +23,7 @@ export default function JuegosPage() {
           </div>
         </div>
         <div className="container-lm py-16">
-          <GamesHub />
+          <GamesHubClient />
         </div>
       </main>
       <Footer />

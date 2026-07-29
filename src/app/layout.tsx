@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Bebas_Neue, Plus_Jakarta_Sans, Space_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import { VisualHelpers } from "@/components/VisualHelpers";
+import { WhatsAppFloatingButton } from "@/components/layout/whatsapp-floating-button";
+import { getSettings } from "@/lib/settings";
 import "./globals.css";
 const display = Bebas_Neue({
   subsets: ["latin"],
@@ -71,7 +73,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const settings = await getSettings();
+
   return (
     <html
       lang="es"
@@ -84,6 +88,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </Providers>
         </VisualHelpers>
+        <WhatsAppFloatingButton phoneNumber={settings.whatsappNumber} />
       </body>
     </html>
   );
