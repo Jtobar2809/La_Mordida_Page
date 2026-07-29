@@ -55,7 +55,23 @@ export function SettingsForm({ settings }: { settings: Settings }) {
         </div>
       </Card>
 
-      <Button type="submit" disabled={loading} size="lg">
+      <Card className="space-y-4 p-6">
+        <h2 className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream">FUNCIONALIDADES</h2>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              id="carouselEnabled"
+              type="checkbox"
+              checked={form.carouselEnabled === "true"}
+              onChange={(e) => setForm({ ...form, carouselEnabled: e.target.checked ? "true" : "false" })}
+              className="h-4 w-4 accent-ember-600"
+            />
+            Mostrar carrusel (Hero) en la página principal
+          </label>
+        </div>
+      </Card>
+
+      <Button type="submit" disabled={loading} size="lg" className="w-full">
         {loading ? "Guardando..." : "Guardar configuración"}
       </Button>
     </form>

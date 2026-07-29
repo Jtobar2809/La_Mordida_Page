@@ -10,11 +10,12 @@ import { PorQueElegirnos } from "@/components/home/por-que-elegirnos";
 import { FidelizacionTeaser } from "@/components/home/fidelizacion-teaser";
 import { Resenas } from "@/components/home/resenas";
 import { Galeria } from "@/components/home/galeria";
+import { getSettings } from "@/lib/settings";
 
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const [featuredProducts, reviews, heroBanners, promoBanners, galleryImages] = await Promise.all([
+  const [featuredProducts, reviews, heroBanners, promoBanners, galleryImages, settings] = await Promise.all([
     prisma.product.findMany({
       where: { featured: true, available: true },
       take: 6,
@@ -37,6 +38,7 @@ export default async function HomePage() {
       where: { active: true },
       orderBy: { order: "asc" },
     }),
+    getSettings(),
   ]);
 
   const galleryImagesClean = galleryImages.map((g) => ({
@@ -50,7 +52,9 @@ export default async function HomePage() {
     <>
       <Navbar />
       <main>
-        <HeroCarousel banners={heroBanners.map((b) => ({ id: b.id, title: b.title, subtitle: b.subtitle, image: b.image, link: b.link }))} />
+        {settings.carouselEnabled === "true" && (
+          <HeroCarousel banners={heroBanners.map((b) => ({ id: b.id, title: b.title, subtitle: b.subtitle, image: b.image, link: b.link }))} />
+        )}
         <Hero />
         <Historia />
         <Destacados products={featuredProducts} />

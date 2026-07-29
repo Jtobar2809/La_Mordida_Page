@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "next/image"; // kept for potential revert — using native <img> for a quick load test below
 import { AnimatedSection } from "@/components/animations/AnimatedSection";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Reveal } from "@/components/animations/Reveal";
@@ -19,17 +19,28 @@ export function Galeria({ images }: { images: { id?: string; image: string; alt?
           {images.map((img, idx) => (
             <Reveal
               key={img.id ?? img.alt ?? idx}
-              className={idx === 0 ? "col-span-2 row-span-2 aspect-square md:aspect-auto" : "aspect-square"}
+              className={
+                idx === 0
+                  ? "col-span-2 row-span-1 aspect-video md:row-span-2 md:aspect-auto"
+                  : "aspect-square"
+              }
             >
               <HoverScale>
                 <div className="relative h-full w-full overflow-hidden rounded-2xl">
-                  <Image
+                  {/* Quick test: use native img to bypass Next.js image behavior */}
+                  <img
                     src={img.image}
                     alt={img.alt ?? "Galería"}
-                    fill
-                    className="object-cover transition-transform duration-500 hover:scale-110"
-                    sizes="(max-width: 768px) 50vw, 25vw"
-                    unoptimized
+                    className="object-cover block w-full h-full transition-transform duration-500 hover:scale-110"
+                    loading="lazy"
+                    onError={(e) => {
+                      // show placeholder and log which URL failed so user can inspect in DevTools
+                      // eslint-disable-next-line no-console
+                      console.warn("Galería: imagen falló al cargar:", img.image, img.alt);
+                      const placeholder = "data:image/svg+xml;utf8," +
+                        encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><rect width='100%' height='100%' fill='%23e5e7eb'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%236b7280' font-family='Arial,Helvetica,sans-serif' font-size='32'>Imagen no disponible</text></svg>");
+                      (e.currentTarget as HTMLImageElement).src = placeholder;
+                    }}
                   />
                 </div>
               </HoverScale>

@@ -10,6 +10,8 @@ export const DEFAULT_SETTINGS = {
   storeLat: "2.4448",
   storeLng: "-76.6147",
   welcomeBonusPoints: "20",
+  // Global feature toggles (stringified booleans)
+  carouselEnabled: "true",
 };
 
 export type SettingsKey = keyof typeof DEFAULT_SETTINGS;

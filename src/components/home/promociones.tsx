@@ -31,7 +31,7 @@ export function Promociones({ banners }: { banners: BannerItem[] }) {
         {banners.map((banner) => {
           const content = (
             <HoverScale>
-              <div className="group relative h-64 w-[85vw] shrink-0 snap-start overflow-hidden rounded-2xl sm:w-[420px]">
+              <div className="group relative h-52 sm:h-64 w-[85vw] shrink-0 snap-start overflow-hidden rounded-2xl sm:w-[420px]">
                 <Image
                   src={banner.image}
                   alt={banner.title}

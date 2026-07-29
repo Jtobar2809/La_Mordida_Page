@@ -53,17 +53,19 @@ export function HeroCarousel({ banners }: { banners: HeroBannerItem[] }) {
   if (!current) return null;
 
   const slideContent = (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full flex items-center justify-center bg-charcoal-900/5">
       <Image
         src={current.image}
         alt={current.title}
         fill
         priority={index === 0}
-        className="object-cover"
+        className="object-fill w-full h-full"
+        style={{ objectPosition: "center" }}
         sizes="100vw"
         unoptimized
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-charcoal-900/85 via-charcoal-900/25 to-charcoal-900/10" />
+      {/* Softer gradient para no ocultar completamente imágenes horizontales */}
+      <div className="absolute inset-0 bg-gradient-to-t from-charcoal-900/60 via-charcoal-900/15 to-charcoal-900/6" />
       <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-10">
         <p className="font-display text-2xl tracking-wide text-cream sm:text-4xl">{current.title}</p>
         {current.subtitle && <p className="mt-1 max-w-lg text-sm text-charcoal-100 sm:text-base">{current.subtitle}</p>}
@@ -73,7 +75,7 @@ export function HeroCarousel({ banners }: { banners: HeroBannerItem[] }) {
 
   return (
     <section
-      className="relative h-[42vh] w-full min-h-[280px] max-h-[460px] overflow-hidden"
+      className="relative h-[34vh] sm:h-[42vh] w-full min-h-[270px] max-h-[510px] overflow-hidden"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       aria-label="Novedades y promociones"
