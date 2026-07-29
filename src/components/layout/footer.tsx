@@ -13,28 +13,28 @@ export function Footer() {
             Hamburguesas y perros calientes artesanales. Carnes e ingredientes frescos, preparación 100% artesanal,
             hechos para morder sin culpa.
           </p>
-          <div className="mt-5 flex gap-3">
+          <div className="mt-5 flex items-center gap-4">
             <a
               href="https://www.instagram.com/lamordidapopayan/"
               aria-label="Instagram - @lamordidapopayan"
               title="Instagram - @lamordidapopayan"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
+              className="flex items-center gap-2 rounded-full border border-charcoal-600 px-3 py-2 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
               <Instagram className="h-4 w-4" />
-              <span className="sr-only">@lamordidapopayan</span>
+              <span className="text-sm font-medium">@lamordidapopayan</span>
             </a>
             <a
               href="https://www.facebook.com/profile.php?id=61592053178769"
-              aria-label="Facebook - La Mordida Popayán"
-              title="Facebook - La Mordida Popayán"
+              aria-label="Facebook - La Mordida"
+              title="Facebook - La Mordida"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-charcoal-600 transition-colors hover:border-ember-500 hover:text-ember-500"
+              className="flex items-center gap-2 rounded-full border border-charcoal-600 px-3 py-2 transition-colors hover:border-ember-500 hover:text-ember-500"
             >
               <Facebook className="h-4 w-4" />
-              <span className="sr-only">La Mordida Popayán</span>
+              <span className="text-sm font-medium">La Mordida</span>
             </a>
           </div>
         </div>
