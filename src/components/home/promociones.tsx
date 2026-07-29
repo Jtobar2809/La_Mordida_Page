@@ -38,6 +38,7 @@ export function Promociones({ banners }: { banners: BannerItem[] }) {
                   fill
                   className="object-cover transition-transform duration-500 group-hover:scale-110"
                   sizes="(max-width: 640px) 85vw, 420px"
+                  unoptimized
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-charcoal-900/90 via-charcoal-900/20 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-6 text-cream">

@@ -43,7 +43,7 @@ export function BannersManager({ banners }: { banners: Banner[] }) {
           <div key={banner.id} className="overflow-hidden rounded-2xl border border-charcoal-100 bg-white dark:border-charcoal-700 dark:bg-charcoal-800">
             <div className="relative h-32 w-full bg-charcoal-100">
               {banner.image ? (
-                <Image src={banner.image} alt={banner.title} fill className="object-cover" sizes="400px" />
+                <Image src={banner.image} alt={banner.title} fill className="object-cover" sizes="400px" unoptimized />
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <ImageIcon className="h-8 w-8 text-charcoal-300" />

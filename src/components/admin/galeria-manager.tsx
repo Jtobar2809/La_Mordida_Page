@@ -42,7 +42,7 @@ export function GaleriaManager({ images }: { images: GalleryImage[] }) {
           <div key={img.id} className="overflow-hidden rounded-2xl border border-charcoal-100 bg-white dark:border-charcoal-700 dark:bg-charcoal-800">
             <div className="relative h-40 w-full bg-charcoal-100">
               {img.image ? (
-                <Image src={img.image} alt={img.alt ?? "Galería"} fill className="object-cover" sizes="400px" />
+                <Image src={img.image} alt={img.alt ?? "Galería"} fill className="object-cover" sizes="400px" unoptimized />
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <ImageIcon className="h-8 w-8 text-charcoal-300" />

@@ -61,6 +61,7 @@ export function HeroCarousel({ banners }: { banners: HeroBannerItem[] }) {
         priority={index === 0}
         className="object-cover"
         sizes="100vw"
+        unoptimized
       />
       <div className="absolute inset-0 bg-gradient-to-t from-charcoal-900/85 via-charcoal-900/25 to-charcoal-900/10" />
       <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-10">

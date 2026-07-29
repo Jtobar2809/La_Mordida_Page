@@ -22,7 +22,8 @@ const links = [
   { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/sellos", label: "Tarjeta de sellos", icon: Stamp },
-  { href: "/admin/banners", label: "Banners", icon: ImageIcon },
+  { href: "/admin/galeria", label: "Galería", icon: ImageIcon },
+  { href: "/admin/banners", label: "Carrusel (Hero) / Banners", icon: ImageIcon },
   { href: "/admin/cupones", label: "Cupones", icon: Percent },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
