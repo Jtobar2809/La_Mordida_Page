@@ -27,6 +27,7 @@ const links = [
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/sellos", label: "Tarjeta de sellos", icon: Stamp },
   { href: "/admin/banners", label: "Banners", icon: ImageIcon },
+  { href: "/admin/galeria", label: "Galería", icon: ImageIcon },
   { href: "/admin/cupones", label: "Cupones", icon: Percent },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
@@ -43,7 +44,7 @@ export function AdminTopbar() {
       </button>
       <div className="flex items-center gap-3">
         <span className="text-sm text-charcoal-500 dark:text-charcoal-300">{session?.user?.name}</span>
-        <button onClick={() => signOut({ callbackUrl: "/login" })} className="text-charcoal-400 hover:text-red-500" aria-label="Cerrar sesión">
+        <button onClick={() => signOut({ callbackUrl: "https://la-mordida.vercel.app/login" })} className="text-charcoal-400 hover:text-red-500" aria-label="Cerrar sesión">
           <LogOut className="h-4 w-4" />
         </button>
       </div>

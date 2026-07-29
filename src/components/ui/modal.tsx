@@ -19,14 +19,20 @@ export function Modal({
   children: React.ReactNode;
   className?: string;
 }) {
-  const dialogRef = React.useRef<HTMLDialogElement>(null);
-
+  // Use a div-based modal (avoid dialog.showModal due to inconsistent iOS support)
   React.useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
 
   return (
     <>
@@ -38,18 +44,7 @@ export function Modal({
         />
       )}
 
-      <dialog
-        ref={dialogRef}
-        onClose={onClose}
-        onCancel={onClose}
-        onClick={(e) => {
-          if (e.target === dialogRef.current) onClose();
-        }}
-        className={cn(
-          "fixed inset-0 z-50 flex items-center justify-center p-4 sm:static sm:m-auto",
-          className
-        )}
-      >
+      <div className={cn("fixed inset-0 z-50 flex items-center justify-center p-4", className)}>
         <div className="w-full h-full max-h-full sm:max-h-[70vh] sm:w-[calc(100vw-2rem)] sm:max-w-lg rounded-2xl border border-charcoal-100 bg-white p-0 shadow-premium dark:border-charcoal-600 dark:bg-charcoal-800 overflow-hidden">
           <div className="flex items-start justify-between border-b border-charcoal-100 p-5 dark:border-charcoal-700">
             <div>
@@ -66,7 +61,7 @@ export function Modal({
           </div>
           <div className="h-full max-h-[calc(100vh-6rem)] overflow-y-auto p-5">{children}</div>
         </div>
-      </dialog>
+      </div>
     </>
   );
 }

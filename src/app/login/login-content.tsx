@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { toast } from "sonner";
 import { AuthCard } from "@/components/auth/auth-card";
 import { GoogleButton } from "@/components/auth/google-button";
@@ -15,6 +15,20 @@ export default function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/cuenta";
+
+  React.useEffect(() => {
+    // If already signed in and admin, redirect to admin panel
+    let mounted = true;
+    getSession().then((s) => {
+      if (!mounted) return;
+      if (s?.user?.role === "ADMIN") {
+        router.replace("/admin");
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -41,8 +55,14 @@ export default function LoginContent() {
       // "recordarme" se podría acortar maxAge en la config de Auth.js según el caso de uso.
     }
 
+    // Fetch session to determine role and redirect appropriately
+    const session = await getSession();
     toast.success("¡Bienvenido de nuevo!");
-    router.push(callbackUrl);
+    if (session?.user?.role === "ADMIN") {
+      router.push("/admin");
+    } else {
+      router.push(callbackUrl);
+    }
     router.refresh();
   };
 

@@ -130,7 +130,7 @@ export function Navbar() {
                         </Link>
                       )}
                       <button
-                        onClick={() => signOut({ callbackUrl: "/login" })}
+                        onClick={() => signOut({ callbackUrl: "https://la-mordida.vercel.app/login" })}
                         className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                       >
                         <LogOut className="h-4 w-4" /> Cerrar sesión
@@ -212,7 +212,7 @@ export function Navbar() {
                         </Button>
                       </Link>
                     )}
-                    <Button variant="ghost" onClick={() => signOut({ callbackUrl: "/login" })}>
+                    <Button variant="ghost" onClick={() => signOut({ callbackUrl: "https://la-mordida.vercel.app/login" })}>
                       Cerrar sesión
                     </Button>
                   </>
