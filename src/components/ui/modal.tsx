@@ -34,15 +34,15 @@ export function Modal({
     };
   }, [open, onClose]);
 
+  if (!open) return null;
+
   return (
     <>
-      {open && (
-        <div
-          onClick={onClose}
-          className="fixed inset-0 z-40 bg-charcoal-900/60 backdrop-blur-sm"
-          aria-hidden
-        />
-      )}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-charcoal-900/60 backdrop-blur-sm"
+        aria-hidden
+      />
 
       <div className={cn("fixed inset-0 z-50 flex items-center justify-center p-4", className)}>
         <div className="w-full h-full max-h-full sm:max-h-[70vh] sm:w-[calc(100vw-2rem)] sm:max-w-lg rounded-2xl border border-charcoal-100 bg-white p-0 shadow-premium dark:border-charcoal-600 dark:bg-charcoal-800 overflow-hidden">
