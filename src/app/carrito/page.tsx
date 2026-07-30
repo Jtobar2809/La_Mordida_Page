@@ -41,6 +41,9 @@ export default function CartPage() {
       return;
     }
 
+    // Abrir una ventana en blanco sin URL para evitar que el navegador la bloquee.
+    const win = window.open("", "_blank");
+
     setLoading(true);
     const result = await createOrder({
       items: items.map((i) => ({
@@ -60,12 +63,24 @@ export default function CartPage() {
 
     if (!result.success) {
       toast.error(result.error);
+      if (win) win.close();
       return;
     }
 
     clear();
     toast.success("¡Pedido registrado! Te llevamos a WhatsApp para confirmarlo.");
-    window.open(result.data!.whatsappUrl, "_blank");
+
+    // Redirigir la ventana abierta al enlace de WhatsApp. Si falla la asignación, abrir directamente.
+    if (win) {
+      try {
+        win.location.href = result.data!.whatsappUrl;
+      } catch (e) {
+        window.open(result.data!.whatsappUrl, "_blank");
+      }
+    } else {
+      window.open(result.data!.whatsappUrl, "_blank");
+    }
+
     router.push("/cuenta/pedidos");
   };
 
