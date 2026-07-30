@@ -73,6 +73,14 @@ export async function Footer() {
           <p className="eyebrow mb-4">Visítanos</p>
           <ul className="space-y-3 text-sm text-charcoal-200">
             <li className="flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-ember-500" /> {settings.storeAddress}</li>
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 flex w-fit items-center gap-2 rounded-full bg-ember-gradient px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-105"
+            >
+              <Navigation className="h-4 w-4" /> Cómo llegar
+            </a>
             <li className="flex gap-2"><Clock className="h-4 w-4 shrink-0 text-ember-500" /> {settings.storeSchedule}</li>
             <li className="flex gap-2">
               <Phone className="h-4 w-4 shrink-0 text-ember-500" />
@@ -81,14 +89,6 @@ export async function Footer() {
               </a>
             </li>
           </ul>
-          <a
-            href={directionsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 flex w-fit items-center gap-2 rounded-full bg-ember-gradient px-4 py-2 text-sm font-semibold text-white transition-transform hover:scale-105"
-          >
-            <Navigation className="h-4 w-4" /> Cómo llegar
-          </a>
         </div>
 
         <div>
