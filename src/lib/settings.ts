@@ -7,8 +7,8 @@ export const DEFAULT_SETTINGS = {
   whatsappNumber: "573108325015",
   storeAddress: "Cra. 12 #34-56, Popayán, Cauca",
   storeSchedule: "Lun a Dom, 11:00 a.m. – 10:00 p.m.",
-  storeLat: "2.4448",
-  storeLng: "-76.6147",
+  storeLat: "2.4511070700532698",
+  storeLng: "-76.60253919514605",
   welcomeBonusPoints: "20",
   // Global feature toggles (stringified booleans)
   carouselEnabled: "true",
