@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getStampCard, STAMPS_REQUIRED } from "@/lib/stamps";
 import { StampCardView } from "@/components/dashboard/stamp-card-view";
@@ -8,9 +9,20 @@ export default async function StampsPage({
   searchParams: Promise<{ token?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user) return null;
+  const { token } = await searchParams;
 
-  const [{ token }, card] = await Promise.all([searchParams, getStampCard(session.user.id)]);
+  if (!session?.user) {
+    // El QR de mostrador es una acción espontánea: es muy probable que
+    // el cliente no tenga sesión iniciada en ese momento. Antes se
+    // devolvía null aquí, dejando una página en blanco sin explicación
+    // ni forma de continuar — el cliente veía el QR como "roto". Ahora
+    // se redirige a login preservando el token en callbackUrl, para que
+    // al iniciar sesión vuelva aquí mismo y el sello se reclame solo.
+    const callbackUrl = token ? `/cuenta/sellos?token=${encodeURIComponent(token)}` : "/cuenta/sellos";
+    redirect(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
+
+  const card = await getStampCard(session.user.id);
 
   return (
     <div className="space-y-6">
