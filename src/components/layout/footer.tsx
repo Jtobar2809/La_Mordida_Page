@@ -11,7 +11,7 @@ export async function Footer() {
   const lng = settings.storeLng;
   const whatsappLink = buildWhatsappLink(settings.whatsappNumber, FOOTER_WHATSAPP_MESSAGE);
 
-  const address = "Cra. 7 #10 Norte-22, Prados del Norte, Popayán, Cauca, Colombia";
+  const address = "Cra. 7 #10-22, Prados del Norte, Popayán, Cauca";
 
   // Google Maps busca directamente la dirección
   const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(
