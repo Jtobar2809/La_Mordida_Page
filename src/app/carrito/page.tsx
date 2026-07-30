@@ -45,43 +45,51 @@ export default function CartPage() {
     const win = window.open("", "_blank");
 
     setLoading(true);
-    const result = await createOrder({
-      items: items.map((i) => ({
-        productId: i.productId,
-        name: i.name,
-        quantity: i.quantity,
-        unitPrice: i.unitPrice,
-        notes: i.notes,
-        extras: i.extras,
-      })),
-      deliveryType,
-      address: deliveryType === "DOMICILIO" ? address : undefined,
-      notes,
-      couponCode: couponCode || undefined,
-    });
-    setLoading(false);
+    try {
+      const result = await createOrder({
+        items: items.map((i) => ({
+          productId: i.productId,
+          name: i.name,
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+          notes: i.notes,
+          extras: i.extras,
+        })),
+        deliveryType,
+        address: deliveryType === "DOMICILIO" ? address : undefined,
+        notes,
+        couponCode: couponCode || undefined,
+      });
 
-    if (!result.success) {
-      toast.error(result.error);
-      if (win) win.close();
-      return;
-    }
+      if (!result.success) {
+        toast.error(result.error ?? "Error al crear la orden");
+        if (win) win.close();
+        return;
+      }
 
-    clear();
-    toast.success("¡Pedido registrado! Te llevamos a WhatsApp para confirmarlo.");
+      clear();
+      toast.success("¡Pedido registrado! Te llevamos a WhatsApp para confirmarlo.");
 
-    // Redirigir la ventana abierta al enlace de WhatsApp. Si falla la asignación, abrir directamente.
-    if (win) {
-      try {
-        win.location.href = result.data!.whatsappUrl;
-      } catch (e) {
+      // Redirigir la ventana abierta al enlace de WhatsApp. Si falla la asignación, abrir directamente.
+      if (win) {
+        try {
+          win.location.href = result.data!.whatsappUrl;
+        } catch (e) {
+          // fallback
+          window.open(result.data!.whatsappUrl, "_blank");
+        }
+      } else {
         window.open(result.data!.whatsappUrl, "_blank");
       }
-    } else {
-      window.open(result.data!.whatsappUrl, "_blank");
-    }
 
-    router.push("/cuenta/pedidos");
+      router.push("/cuenta/pedidos");
+    } catch (err) {
+      console.error("Checkout error:", err);
+      toast.error("Ocurrió un error al procesar el pedido. Intenta de nuevo.");
+      if (win) try { win.close(); } catch {}
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
