@@ -11,15 +11,17 @@ export async function Footer() {
   const lng = settings.storeLng;
   const whatsappLink = buildWhatsappLink(settings.whatsappNumber, FOOTER_WHATSAPP_MESSAGE);
 
-  // Embed de Google Maps sin API key: gratis, sin límite práctico de uso
-  // para este caso. El parámetro q=lat,lng coloca un marcador exacto en
-  // el punto (a diferencia del bbox de OpenStreetMap que antes no
-  // mostraba ningún pin, solo un recuadro genérico de la ciudad).
-  const mapEmbedSrc = `https://www.google.com/maps?q=${lat},${lng}&hl=es&z=17&output=embed`;
-  // Enlace de "Cómo llegar": abre Google Maps (app o web) con
-  // direcciones ya armadas hacia el punto exacto.
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  const address = "Cra. 7 #10 Norte-22, Prados del Norte, Popayán, Cauca, Colombia";
 
+  // Google Maps busca directamente la dirección
+  const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(
+    address
+  )}&hl=es&z=17&output=embed`;
+
+  // Botón "Cómo llegar"
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+    address
+  )}`;
   return (
     <footer className="border-t border-charcoal-700 bg-charcoal-900 text-cream" id="contacto">
       <div className="container-lm grid grid-cols-1 gap-10 py-16 md:grid-cols-4">
