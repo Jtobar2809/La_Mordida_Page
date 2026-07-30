@@ -5,10 +5,10 @@ export const DEFAULT_SETTINGS = {
   deliveryFee: "5000",
   taxRate: "0", // porcentaje, 0 si los precios ya incluyen impuestos
   whatsappNumber: "573108325015",
-  storeAddress: "Cra. 12 #34-56, Popayán, Cauca",
+  storeAddress: "Cra. 7 #10 Norte-22, Barrio Prados del Norte, Popayán, Cauca",
   storeSchedule: "Lun a Dom, 11:00 a.m. – 10:00 p.m.",
-  storeLat: "2.4511070700532698",
-  storeLng: "-76.60253919514605",
+  storeLat: "2.451057",
+  storeLng: "-76.602570",
   welcomeBonusPoints: "20",
   // Global feature toggles (stringified booleans)
   carouselEnabled: "true",
