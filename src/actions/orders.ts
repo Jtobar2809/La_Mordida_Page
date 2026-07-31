@@ -111,6 +111,13 @@ export async function createOrder(
   return { success: true, data: { orderId: order.id, whatsappUrl } };
 }
 
+const manualOrderItemSchema = z.object({
+  productId: z.string(),
+  quantity: z.number().int().positive(),
+  extraIds: z.array(z.string()).default([]),
+  notes: z.string().optional(),
+});
+
 const orderStatusSchema = z.enum([
   "PENDIENTE",
   "CONFIRMADO",
@@ -119,6 +126,102 @@ const orderStatusSchema = z.enum([
   "ENTREGADO",
   "CANCELADO",
 ]);
+
+const createManualOrderSchema = z.object({
+  customerName: z.string().min(2, "El nombre es muy corto"),
+  customerPhone: z.string().optional(),
+  items: z.array(manualOrderItemSchema).min(1, "Agrega al menos un producto"),
+  deliveryType: z.enum(["DOMICILIO", "RECOGE_EN_TIENDA"]),
+  address: z.string().optional(),
+  notes: z.string().optional(),
+  status: orderStatusSchema.default("ENTREGADO"),
+});
+
+/** Crea un pedido desde el admin, para clientes que compran en el sitio físico. */
+export async function createManualOrder(input: unknown): Promise<ActionResult<{ orderId: string }>> {
+  const session = await auth();
+  if (session?.user.role !== "ADMIN") return { success: false, error: "No autorizado" };
+
+  const parsed = createManualOrderSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const { customerName, customerPhone, items, deliveryType, address, notes, status } = parsed.data;
+
+  if (deliveryType === "DOMICILIO" && !address?.trim()) {
+    return { success: false, error: "Ingresa una dirección de entrega." };
+  }
+
+  // Reutiliza un cliente existente si el teléfono ya coincide con una cuenta
+  // (por ejemplo un cliente recurrente que compra en el local); si no, crea
+  // una cuenta liviana "de mostrador" con solo nombre y teléfono.
+  const phone = customerPhone?.trim() || undefined;
+  let customer = phone ? await prisma.user.findFirst({ where: { phone } }) : null;
+
+  if (!customer) {
+    customer = await prisma.user.create({
+      data: { name: customerName, phone: phone ?? null, role: "CLIENTE" },
+    });
+  }
+
+  // Precios reales desde la base de datos: nunca confiar en lo que mande el cliente.
+  const products = await prisma.product.findMany({
+    where: { id: { in: items.map((i) => i.productId) } },
+    include: { extras: true },
+  });
+  const productMap = new Map(products.map((p) => [p.id, p]));
+
+  let subtotal = 0;
+  const orderItemsData: {
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+    notes: string | undefined;
+    extras: { id: string; name: string; price: number }[];
+  }[] = [];
+
+  for (const item of items) {
+    const product = productMap.get(item.productId);
+    if (!product) return { success: false, error: "Uno de los productos seleccionados ya no existe." };
+
+    const selectedExtras = product.extras.filter((e) => item.extraIds.includes(e.id));
+    const extrasTotal = selectedExtras.reduce((s, e) => s + e.price, 0);
+    subtotal += (product.price + extrasTotal) * item.quantity;
+
+    orderItemsData.push({
+      productId: product.id,
+      quantity: item.quantity,
+      unitPrice: product.price,
+      notes: item.notes,
+      extras: selectedExtras.map((e) => ({ id: e.id, name: e.name, price: e.price })),
+    });
+  }
+
+  const settings = await getSettings();
+  const deliveryFee = deliveryType === "DOMICILIO" ? Number(settings.deliveryFee) : 0;
+  const taxRate = Number(settings.taxRate) || 0;
+  const tax = Math.floor((subtotal * taxRate) / 100);
+  const total = subtotal + deliveryFee + tax;
+
+  const order = await prisma.order.create({
+    data: {
+      userId: customer.id,
+      status,
+      deliveryType,
+      address: deliveryType === "DOMICILIO" ? address : null,
+      notes,
+      subtotal,
+      deliveryFee,
+      tax,
+      discount: 0,
+      total,
+      pointsEarned: 0,
+      whatsappSent: false,
+      items: { create: orderItemsData },
+    },
+  });
+
+  return { success: true, data: { orderId: order.id } };
+}
 
 export async function updateOrderStatus(orderId: string, status: string): Promise<ActionResult> {
   const session = await auth();

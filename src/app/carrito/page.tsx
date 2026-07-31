@@ -76,10 +76,24 @@ export default function CartPage() {
       const { whatsappUrl } = result.data;
 
       clear();
-      toast.success("¡Pedido registrado! Te llevamos a WhatsApp para confirmarlo.");
+
+      // El intento automático de abrir WhatsApp puede fallar (bloqueador de
+      // popups, sobre todo en el segundo pedido en adelante). Por eso el
+      // toast siempre incluye un botón real: un clic del usuario nunca lo
+      // bloquea el navegador, así que es la garantía de respaldo.
+      toast.success("¡Pedido registrado!", {
+        description: "Te llevamos a WhatsApp para confirmarlo.",
+        duration: 15000,
+        action: {
+          label: "Abrir WhatsApp",
+          onClick: () => window.open(whatsappUrl, "_blank"),
+        },
+      });
 
       // Redirigir la ventana abierta al enlace de WhatsApp. Nunca debe poder
-      // tumbar la app: si la ventana emergente falla, seguimos sin ella.
+      // tumbar la app: si la ventana emergente falla, seguimos sin ella (el
+      // botón del toast de arriba y el botón en "Mis pedidos" quedan como
+      // respaldo garantizado).
       try {
         if (win && !win.closed) {
           win.location.href = whatsappUrl;
@@ -88,7 +102,6 @@ export default function CartPage() {
         }
       } catch (e) {
         console.error("No se pudo abrir WhatsApp automáticamente:", e);
-        toast.info("No pudimos abrir WhatsApp automáticamente. Vuelve a intentarlo desde 'Mis pedidos'.");
       }
 
       router.push("/cuenta/pedidos");

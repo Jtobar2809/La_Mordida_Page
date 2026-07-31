@@ -15,7 +15,7 @@ export function Footer() {
   // Prisma (P2024 "Timed out fetching a new connection").
   const s = useSettings();
 
-  const address = "wok house, Popayán, Cauca";
+  const address = "La Mordida Popayán | Hamburguesas Popayán, Popayán, Cauca, Colombia";
   const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(address)}&hl=es&z=17&output=embed`;
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
   const whatsappLink = buildWhatsappLink(s.whatsappNumber, FOOTER_WHATSAPP_MESSAGE);
