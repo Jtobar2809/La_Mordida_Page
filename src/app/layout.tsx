@@ -84,7 +84,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body className="font-body">
         <VisualHelpers>
-          <Providers>
+          <Providers settings={settings}>
             {children}
           </Providers>
         </VisualHelpers>

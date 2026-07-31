@@ -45,8 +45,8 @@ export function Modal({
       />
 
       <div className={cn("fixed inset-0 z-50 flex items-center justify-center p-4", className)}>
-        <div className="w-full h-full max-h-full sm:max-h-[70vh] sm:w-[calc(100vw-2rem)] sm:max-w-lg rounded-2xl border border-charcoal-100 bg-white p-0 shadow-premium dark:border-charcoal-600 dark:bg-charcoal-800 overflow-hidden">
-          <div className="flex items-start justify-between border-b border-charcoal-100 p-5 dark:border-charcoal-700">
+        <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-charcoal-100 bg-white shadow-premium dark:border-charcoal-600 dark:bg-charcoal-800 sm:h-auto sm:max-h-[85vh] sm:w-[calc(100vw-2rem)] sm:max-w-lg">
+          <div className="flex shrink-0 items-start justify-between border-b border-charcoal-100 p-5 dark:border-charcoal-700">
             <div>
               <h2 className="font-display text-lg font-bold text-charcoal-900 dark:text-cream">{title}</h2>
               {description && <p className="mt-1 text-sm text-charcoal-400">{description}</p>}
@@ -59,7 +59,7 @@ export function Modal({
               <X className="h-5 w-5" />
             </button>
           </div>
-          <div className="h-full max-h-[calc(100vh-6rem)] overflow-y-auto p-5">{children}</div>
+          <div className="flex-1 overflow-y-auto p-5">{children}</div>
         </div>
       </div>
     </>

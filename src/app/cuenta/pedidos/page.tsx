@@ -44,7 +44,7 @@ export default async function OrdersPage() {
               <ul className="mt-3 space-y-1 border-t border-charcoal-100 pt-3 text-sm text-charcoal-500 dark:border-charcoal-700 dark:text-charcoal-300">
                 {order.items.map((item) => (
                   <li key={item.id}>
-                    {item.quantity}x {item.product.name}
+                    {item.quantity}x {item.product?.name ?? "Producto no disponible"}
                   </li>
                 ))}
               </ul>

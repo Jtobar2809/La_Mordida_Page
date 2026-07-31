@@ -63,23 +63,32 @@ export default function CartPage() {
 
       if (!result.success) {
         toast.error(result.error ?? "Error al crear la orden");
-        if (win) win.close();
+        if (win) try { win.close(); } catch {}
         return;
       }
+
+      if (!result.data) {
+        toast.error("Error al crear la orden");
+        if (win) try { win.close(); } catch {}
+        return;
+      }
+
+      const { whatsappUrl } = result.data;
 
       clear();
       toast.success("¡Pedido registrado! Te llevamos a WhatsApp para confirmarlo.");
 
-      // Redirigir la ventana abierta al enlace de WhatsApp. Si falla la asignación, abrir directamente.
-      if (win) {
-        try {
-          win.location.href = result.data!.whatsappUrl;
-        } catch (e) {
-          // fallback
-          window.open(result.data!.whatsappUrl, "_blank");
+      // Redirigir la ventana abierta al enlace de WhatsApp. Nunca debe poder
+      // tumbar la app: si la ventana emergente falla, seguimos sin ella.
+      try {
+        if (win && !win.closed) {
+          win.location.href = whatsappUrl;
+        } else {
+          window.open(whatsappUrl, "_blank");
         }
-      } else {
-        window.open(result.data!.whatsappUrl, "_blank");
+      } catch (e) {
+        console.error("No se pudo abrir WhatsApp automáticamente:", e);
+        toast.info("No pudimos abrir WhatsApp automáticamente. Vuelve a intentarlo desde 'Mis pedidos'.");
       }
 
       router.push("/cuenta/pedidos");

@@ -1,27 +1,25 @@
+"use client";
+
 import Link from "next/link";
 import { Instagram, Facebook, MapPin, Clock, Phone, Navigation } from "lucide-react";
-import { getSettings } from "@/lib/settings";
 import { buildWhatsappLink } from "@/lib/whatsapp";
+import { useSettings } from "@/hooks/use-settings";
 
 const FOOTER_WHATSAPP_MESSAGE = "¡Hola! 👋\n¡Quiero pedir en la mordida!!";
 
-export async function Footer() {
-  const settings = await getSettings();
-  const lat = settings.storeLat;
-  const lng = settings.storeLng;
-  const whatsappLink = buildWhatsappLink(settings.whatsappNumber, FOOTER_WHATSAPP_MESSAGE);
+export function Footer() {
+  // Los settings ya vienen del servidor vía <SettingsProvider> (ver
+  // src/app/layout.tsx). Antes este componente hacía su propio
+  // fetch("/api/settings") en cada montaje, duplicando consultas a la
+  // base de datos en cada navegación y agotando el connection pool de
+  // Prisma (P2024 "Timed out fetching a new connection").
+  const s = useSettings();
 
   const address = "wok house, Popayán, Cauca";
+  const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(address)}&hl=es&z=17&output=embed`;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  const whatsappLink = buildWhatsappLink(s.whatsappNumber, FOOTER_WHATSAPP_MESSAGE);
 
-  // Google Maps busca directamente la dirección
-  const mapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(
-    address
-  )}&hl=es&z=17&output=embed`;
-
-  // Botón "Cómo llegar"
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
-    address
-  )}`;
   return (
     <footer className="border-t border-charcoal-700 bg-charcoal-900 text-cream" id="contacto">
       <div className="container-lm grid grid-cols-1 gap-10 py-16 md:grid-cols-4">
@@ -72,7 +70,7 @@ export async function Footer() {
         <div>
           <p className="eyebrow mb-4">Visítanos</p>
           <ul className="space-y-3 text-sm text-charcoal-200">
-            <li className="flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-ember-500" /> {settings.storeAddress}</li>
+            <li className="flex gap-2"><MapPin className="h-4 w-4 shrink-0 text-ember-500" /> {s.storeAddress}</li>
             <a
               href={directionsUrl}
               target="_blank"
@@ -81,11 +79,11 @@ export async function Footer() {
             >
               <Navigation className="h-4 w-4" /> Cómo llegar
             </a>
-            <li className="flex gap-2"><Clock className="h-4 w-4 shrink-0 text-ember-500" /> {settings.storeSchedule}</li>
+            <li className="flex gap-2"><Clock className="h-4 w-4 shrink-0 text-ember-500" /> {s.storeSchedule}</li>
             <li className="flex gap-2">
               <Phone className="h-4 w-4 shrink-0 text-ember-500" />
               <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="hover:text-ember-400">
-                +{settings.whatsappNumber}
+                +{s.whatsappNumber}
               </a>
             </li>
           </ul>
