@@ -129,6 +129,7 @@ model Product {
   orderItems  OrderItem[]
   category    Category       @relation(fields: [categoryId], references: [id])
   extras      ProductExtra[]
+  recetaItems RecetaItem[]
 
   @@index([categoryId])
   @@index([featured])
@@ -146,6 +147,132 @@ model ProductExtra {
   @@index([productId])
 }
 
+model Insumo {
+  id                   String             @id @default(cuid())
+  nombre               String             @unique
+  unidad               UnidadInsumo
+  stockActual          Float              @default(0)
+  stockMinimo          Float              @default(0)
+  costoUnitario        Int                @default(0)
+  proveedor            String?
+  proveedorPrincipalId String?
+  fechaVencimiento     DateTime?
+  esElaborado          Boolean            @default(false)
+  activo               Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  recetaItems          RecetaItem[]
+  movimientos          MovimientoInsumo[]
+  compraItems          CompraItem[]
+  proveedorPrincipal   Proveedor?         @relation(fields: [proveedorPrincipalId], references: [id])
+  composicion          InsumoComponente[] @relation("Composicion")
+  usadoComoBaseEn      InsumoComponente[] @relation("UsadoComoBase")
+
+  @@index([activo])
+  @@index([proveedorPrincipalId])
+}
+
+// Receta / BOM: qué insumos y en qué cantidad componen cada producto del menú.
+// Es la pieza que permite descontar stock automático en fases posteriores.
+model RecetaItem {
+  id        String   @id @default(cuid())
+  productId String
+  insumoId  String
+  cantidad  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insumo    Insumo   @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, insumoId])
+  @@index([productId])
+  @@index([insumoId])
+}
+
+// Insumos elaborados: algunos insumos (salsas, mezclas) no se compran directo,
+// se preparan combinando otros insumos base. InsumoComponente modela esa
+// "receta interna": cuánto de un insumo base entra por cada 1 [unidad del
+// insumo elaborado] (ej. 0.4g de mayonesa por cada 1g de aderezo).
+model InsumoComponente {
+  id                String   @id @default(cuid())
+  insumoElaboradoId String
+  insumoBaseId      String
+  cantidad          Float
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  insumoElaborado   Insumo   @relation("Composicion", fields: [insumoElaboradoId], references: [id], onDelete: Cascade)
+  insumoBase        Insumo   @relation("UsadoComoBase", fields: [insumoBaseId], references: [id], onDelete: Restrict)
+
+  @@unique([insumoElaboradoId, insumoBaseId])
+  @@index([insumoElaboradoId])
+  @@index([insumoBaseId])
+}
+
+// Libro mayor de inventario: toda entrada, salida, merma o ajuste queda trazada aquí.
+model MovimientoInsumo {
+  id            String         @id @default(cuid())
+  insumoId      String
+  tipo          MovimientoTipo
+  cantidad      Float
+  costoUnitario Int?
+  motivo        String?
+  orderId       String?
+  createdById   String?
+  createdAt     DateTime       @default(now())
+  insumo        Insumo         @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@index([insumoId])
+  @@index([tipo])
+  @@index([createdAt])
+  @@index([orderId])
+}
+
+// Fase 3: proveedores y compras. Registrar una Compra descuenta... perdón,
+// SUMA stock (ENTRADA) y recalcula el costo promedio ponderado del insumo,
+// reutilizando el mismo libro mayor MovimientoInsumo de la Fase 1.
+model Proveedor {
+  id        String    @id @default(cuid())
+  nombre    String    @unique
+  contacto  String?
+  telefono  String?
+  email     String?
+  activo    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  insumos   Insumo[]
+  compras   Compra[]
+
+  @@index([activo])
+}
+
+model Compra {
+  id          String       @id @default(cuid())
+  proveedorId String
+  fecha       DateTime     @default(now())
+  total       Int          @default(0)
+  notas       String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  proveedor   Proveedor    @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  items       CompraItem[]
+
+  @@index([proveedorId])
+  @@index([fecha])
+}
+
+model CompraItem {
+  id            String @id @default(cuid())
+  compraId      String
+  insumoId      String
+  cantidad      Float
+  costoUnitario Int
+  compra        Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+  insumo        Insumo @relation(fields: [insumoId], references: [id], onDelete: Restrict)
+
+  @@index([compraId])
+  @@index([insumoId])
+}
+
 model Order {
   id                 String              @id @default(cuid())
   userId             String
@@ -161,6 +288,7 @@ model Order {
   couponCode         String?
   pointsEarned       Int                 @default(0)
   whatsappSent       Boolean             @default(false)
+  inventarioDescontado Boolean           @default(false)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   user               User                @relation(fields: [userId], references: [id])
@@ -456,4 +584,19 @@ enum StampQRStatus {
 enum BannerPlacement {
   HERO
   PROMOCIONES
+}
+
+enum UnidadInsumo {
+  GRAMOS
+  KILOGRAMOS
+  MILILITROS
+  LITROS
+  UNIDAD
+}
+
+enum MovimientoTipo {
+  ENTRADA
+  SALIDA
+  AJUSTE
+  MERMA
 }

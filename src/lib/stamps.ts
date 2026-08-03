@@ -27,6 +27,13 @@ function generateStampToken() {
  * autenticado que lo escanee dentro de la ventana de expiración se
  * queda con el sello. Expira a los 10 minutos para que una foto de
  * pantalla tomada después de que el cliente se fue no sirva de nada.
+ *
+ * La URL completa se arma AQUÍ, en el servidor, con el dominio público
+ * fijo — nunca con window.location.origin del lado del cliente. Si el
+ * admin abre el panel desde una IP local, una red WiFi distinta o un
+ * despliegue de prueba, window.location.origin habría quedado grabado
+ * en el QR y cualquier teléfono fuera de esa red exacta habría visto
+ * "Safari no puede conectarse al servidor" al escanearlo.
  */
 export async function generateStampQR(adminUserId: string) {
   const token = generateStampToken();
@@ -40,7 +47,10 @@ export async function generateStampQR(adminUserId: string) {
     },
   });
 
-  return stampQR;
+  const baseUrl = process.env.NEXTAUTH_URL ?? "https://la-mordida.vercel.app";
+  const claimUrl = `${baseUrl}/cuenta/sellos?token=${encodeURIComponent(token)}`;
+
+  return { ...stampQR, claimUrl };
 }
 
 export type ClaimStampResult = {

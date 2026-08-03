@@ -25,7 +25,7 @@ const mono = Space_Mono({
   display: "swap",
 });
 
-const siteUrl = process.env.NEXTAUTH_URL ?? "https://lamordida.com";
+const siteUrl = process.env.NEXTAUTH_URL ?? "https://la-mordida.vercel.app";
 
 
 export const metadata: Metadata = {

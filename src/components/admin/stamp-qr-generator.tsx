@@ -13,21 +13,18 @@ import { generateStampQRAction } from "@/actions/stamps";
  * mostrador. El QR codifica una URL completa (no solo el token) para
  * que funcione como deep-link incluso si el cliente lo escanea con la
  * cámara nativa del celular sin tener la página de la tienda abierta.
- * Muestra una cuenta regresiva en vivo hasta la expiración (10 min) y
- * se refresca solo cuando expira, para que el mostrador no quede con
- * un QR muerto en pantalla sin darse cuenta.
+ * La URL viene ya armada desde el servidor (con el dominio público fijo,
+ * no con window.location.origin de este dispositivo) para que el QR
+ * funcione sin importar desde qué red o URL esté el mostrador viendo
+ * el panel. Muestra una cuenta regresiva en vivo hasta la expiración
+ * (10 min) y se refresca solo cuando expira, para que el mostrador no
+ * quede con un QR muerto en pantalla sin darse cuenta.
  */
 export function StampQRGenerator() {
-  const [token, setToken] = React.useState<string | null>(null);
+  const [claimUrl, setClaimUrl] = React.useState<string | null>(null);
   const [expiresAt, setExpiresAt] = React.useState<Date | null>(null);
   const [secondsLeft, setSecondsLeft] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
-
-  const claimUrl = React.useMemo(() => {
-    if (!token) return null;
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    return `${origin}/cuenta/sellos?token=${encodeURIComponent(token)}`;
-  }, [token]);
 
   async function generate() {
     setLoading(true);
@@ -43,7 +40,7 @@ export function StampQRGenerator() {
       return;
     }
 
-    setToken(result.data.token);
+    setClaimUrl(result.data.claimUrl);
     setExpiresAt(new Date(result.data.expiresAt));
   }
 

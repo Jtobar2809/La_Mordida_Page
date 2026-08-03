@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { buildWhatsappOrderMessage, buildWhatsappLink } from "@/lib/whatsapp";
+import { requiereDescuentoInventario, descontarInventarioPorOrden, revertirInventarioPorOrden } from "@/lib/inventario";
 import type { ActionResult } from "@/actions/auth";
 
 const cartItemSchema = z.object({
@@ -220,6 +221,12 @@ export async function createManualOrder(input: unknown): Promise<ActionResult<{ 
     },
   });
 
+  // Si el pedido de mostrador ya nace "confirmado" o más adelante en el flujo
+  // (por defecto ENTREGADO, venta física ya completada), descuenta insumos ya mismo.
+  if (requiereDescuentoInventario(status)) {
+    await descontarInventarioPorOrden(order.id);
+  }
+
   return { success: true, data: { orderId: order.id } };
 }
 
@@ -234,6 +241,16 @@ export async function updateOrderStatus(orderId: string, status: string): Promis
     where: { id: orderId },
     data: { status: parsed.data },
   });
+
+  // Un pedido confirmado (o más adelante en el flujo) consume insumos según receta.
+  // Si se cancela un pedido que ya había descontado stock, se asume que los
+  // insumos no se llegaron a usar y se revierte automáticamente (ver el aviso
+  // en src/lib/inventario.ts sobre el caso de comida ya preparada y perdida).
+  if (parsed.data === "CANCELADO") {
+    await revertirInventarioPorOrden(orderId);
+  } else if (requiereDescuentoInventario(parsed.data)) {
+    await descontarInventarioPorOrden(orderId);
+  }
 
   return { success: true };
 }

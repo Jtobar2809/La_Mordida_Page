@@ -17,7 +17,7 @@ async function requireAdmin() {
  * confirmar una compra. Devuelve el token crudo — el componente de UI
  * lo codifica en el QR (nunca se expone el id interno de la fila).
  */
-export async function generateStampQRAction(): Promise<ActionResult<{ token: string; expiresAt: string }>> {
+export async function generateStampQRAction(): Promise<ActionResult<{ token: string; claimUrl: string; expiresAt: string }>> {
   const session = await requireAdmin().catch(() => null);
   if (!session?.user?.id) return { success: false, error: "No autorizado" };
 
@@ -26,7 +26,7 @@ export async function generateStampQRAction(): Promise<ActionResult<{ token: str
 
   return {
     success: true,
-    data: { token: stampQR.token, expiresAt: stampQR.expiresAt.toISOString() },
+    data: { token: stampQR.token, claimUrl: stampQR.claimUrl, expiresAt: stampQR.expiresAt.toISOString() },
   };
 }
 

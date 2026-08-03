@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/prisma";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXTAUTH_URL ?? "https://lamordida.com";
+  const baseUrl = process.env.NEXTAUTH_URL ?? "https://la-mordida.vercel.app";
 
   let products: { slug: string; updatedAt: Date }[] = [];
   try {

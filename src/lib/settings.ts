@@ -6,7 +6,7 @@ export const DEFAULT_SETTINGS = {
   taxRate: "0", // porcentaje, 0 si los precios ya incluyen impuestos
   whatsappNumber: "573108325015",
   storeAddress: "Cra. 7 #10 Norte-22, Barrio Prados del Norte, Popayán, Cauca",
-  storeSchedule: "Lun a Dom, 11:00 a.m. – 10:00 p.m.",
+  storeSchedule: "Lun a Dom, 5:00 p.m. – 10:00 p.m.",
   storeLat: "2.451057",
   storeLng: "-76.602570",
   welcomeBonusPoints: "20",

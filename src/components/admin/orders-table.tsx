@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { PackageCheck } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { updateOrderStatus } from "@/actions/orders";
@@ -14,6 +15,7 @@ type OrderRow = {
   deliveryType: string;
   total: number;
   createdAt: Date;
+  inventarioDescontado: boolean;
   user: { name: string | null; phone: string | null };
   items: { quantity: number; product: { name: string } }[];
 };
@@ -47,7 +49,12 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
           {orders.map((order) => (
             <tr key={order.id}>
               <td className="px-4 py-3">
-                <p className="font-mono font-semibold">#{order.id.slice(-6).toUpperCase()}</p>
+                <p className="font-mono font-semibold">
+                  #{order.id.slice(-6).toUpperCase()}
+                  {order.inventarioDescontado && (
+                    <PackageCheck className="ml-1.5 inline h-3.5 w-3.5 text-olive-600 dark:text-olive-400" aria-label="Inventario descontado" />
+                  )}
+                </p>
                 <p className="text-xs text-charcoal-400">{formatDateTime(order.createdAt)}</p>
               </td>
               <td className="px-4 py-3">
