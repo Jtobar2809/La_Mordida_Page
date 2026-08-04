@@ -30,7 +30,7 @@ export function Galeria({ images }: { images: { id?: string; image: string; alt?
                   {/* Quick test: use native img to bypass Next.js image behavior */}
                   <img
                     src={img.image}
-                    alt={img.alt ?? "Galería"}
+                    alt={img.alt ?? "Hamburguesa artesanal La Mordida en Popayán"}
                     className="object-cover block w-full h-full transition-transform duration-500 hover:scale-110"
                     loading="lazy"
                     onError={(e) => {

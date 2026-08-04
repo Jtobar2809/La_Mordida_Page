@@ -31,7 +31,7 @@ export function ProveedoresManager({ proveedores }: { proveedores: Proveedor[] }
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-charcoal-100 dark:border-charcoal-700">
+      <div className="overflow-x-auto rounded-2xl border border-charcoal-100 dark:border-charcoal-700">
         <table className="w-full text-left text-sm">
           <thead className="bg-charcoal-50 text-xs uppercase tracking-wide text-charcoal-400 dark:bg-charcoal-800">
             <tr>
