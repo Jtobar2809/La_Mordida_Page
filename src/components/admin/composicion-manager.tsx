@@ -73,6 +73,11 @@ export function ComposicionManager({
         Cantidad de cada insumo base por cada <strong className="text-charcoal-700 dark:text-cream">1 {insumo.unidad.toLowerCase()}</strong> de{" "}
         {insumo.nombre}.
       </p>
+      <p className="text-xs text-charcoal-400">
+        Ahora puedes usar otro insumo elaborado como componente (ej. una salsa dentro de un combo). Si el costo mostrado aquí abajo
+        involucra un insumo elaborado, es un estimado con su último costo guardado — al presionar «Usar como costo del insumo» se
+        recalcula en cascada, sin importar el orden.
+      </p>
 
       <div className="overflow-x-auto rounded-2xl border border-charcoal-100 dark:border-charcoal-700">
         <table className="w-full text-left text-sm">
@@ -117,7 +122,8 @@ export function ComposicionManager({
             <Select value={insumoBaseId} onChange={(e) => setInsumoBaseId(e.target.value)}>
               {opciones.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.nombre} ({UNIDAD_LABEL[i.unidad]})
+                  {i.nombre} ({UNIDAD_LABEL[i.unidad]}
+                  {i.esElaborado ? " · elaborado" : ""})
                 </option>
               ))}
             </Select>

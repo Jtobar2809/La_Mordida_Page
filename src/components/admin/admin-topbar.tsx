@@ -3,36 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
-import {
-  LayoutDashboard,
-  Beef,
-  Tag,
-  ClipboardList,
-  Users,
-  Settings,
-  LogOut,
-  Image as ImageIcon,
-  Percent,
-  Stamp,
-  Warehouse,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const links = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/productos", label: "Productos", icon: Beef },
-  { href: "/admin/categorias", label: "Categorías", icon: Tag },
-  { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
-  { href: "/admin/inventario", label: "Inventario", icon: Warehouse },
-  { href: "/admin/clientes", label: "Clientes", icon: Users },
-  { href: "/admin/sellos", label: "Tarjeta de sellos", icon: Stamp },
-  { href: "/admin/banners", label: "Banners", icon: ImageIcon },
-  { href: "/admin/galeria", label: "Galería", icon: ImageIcon },
-  { href: "/admin/cupones", label: "Cupones", icon: Percent },
-  { href: "/admin/configuracion", label: "Configuración", icon: Settings },
-];
+import { adminNavLinks } from "@/lib/admin-nav";
 
 export function AdminTopbar() {
   const pathname = usePathname();
@@ -61,7 +35,7 @@ export function AdminTopbar() {
               </button>
             </div>
             <nav className="space-y-1">
-              {links.map(({ href, label, icon: Icon }) => {
+              {adminNavLinks.map(({ href, label, icon: Icon }) => {
                 const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
                 return (
                   <Link

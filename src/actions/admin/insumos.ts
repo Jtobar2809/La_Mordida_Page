@@ -68,9 +68,20 @@ export async function deleteInsumo(id: string): Promise<ActionResult> {
     return { success: false, error: "No autorizado" };
   }
 
-  const enUso = await prisma.recetaItem.count({ where: { insumoId: id } });
-  if (enUso > 0) {
+  // Dos usos posibles que bloquean el borrado a nivel de base de datos
+  // (onDelete: Restrict): que esté en la receta de un producto, o que sea
+  // componente de otro insumo elaborado. Sin este chequeo, prisma.insumo.delete
+  // lanza un error crudo de restricción en vez de un mensaje entendible.
+  const [enRecetas, enComposiciones] = await Promise.all([
+    prisma.recetaItem.count({ where: { insumoId: id } }),
+    prisma.insumoComponente.count({ where: { insumoBaseId: id } }),
+  ]);
+
+  if (enRecetas > 0) {
     return { success: false, error: "No puedes eliminar un insumo que está usado en una o más recetas. Quítalo de esas recetas primero." };
+  }
+  if (enComposiciones > 0) {
+    return { success: false, error: "No puedes eliminar un insumo que es componente de otro insumo elaborado. Quítalo de esa composición primero." };
   }
 
   await prisma.insumo.delete({ where: { id } });

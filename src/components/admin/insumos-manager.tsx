@@ -49,9 +49,18 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
       {bajoStock.length > 0 && (
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            <strong>{bajoStock.length}</strong> insumo(s) en o por debajo del stock mínimo: {bajoStock.map((i) => i.nombre).join(", ")}.
-          </p>
+          <div>
+            <p>
+              <strong>{bajoStock.length}</strong> insumo(s) en o por debajo del stock mínimo:
+            </p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              {bajoStock.map((i) => (
+                <li key={i.id}>
+                  {i.nombre} — faltan {Math.max(0, i.stockMinimo - i.stockActual)} {UNIDAD_LABEL[i.unidad]} para llegar al mínimo
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -168,7 +177,7 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
           <ComposicionManager
             insumo={composingFor}
             componentes={composingFor.composicion}
-            insumosDisponibles={insumos.filter((i) => i.id !== composingFor.id && !i.esElaborado)}
+            insumosDisponibles={insumos.filter((i) => i.id !== composingFor.id)}
             onDone={() => setComposingFor(null)}
           />
         )}
