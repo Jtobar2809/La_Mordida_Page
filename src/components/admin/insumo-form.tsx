@@ -24,7 +24,7 @@ export function InsumoForm({
 }: {
   insumo: (Insumo & { proveedorPrincipal?: { nombre: string } | null }) | null;
   proveedores: Proveedor[];
-  onDone: () => void;
+  onDone: (nuevo?: { id: string; nombre: string; unidad: Insumo["unidad"]; stockActual: number }) => void;
 }) {
   const [form, setForm] = React.useState({
     nombre: insumo?.nombre ?? "",
@@ -47,7 +47,15 @@ export function InsumoForm({
 
     if (!result.success) return toast.error(result.error);
     toast.success(insumo ? "Insumo actualizado" : "Insumo creado");
-    onDone();
+
+    // Si es uno nuevo, avisamos al padre con lo justo para que pueda abrir
+    // de una vez el registro de stock inicial — sin esto, el insumo quedaba
+    // en 0 y nadie sabía que había un paso más para cargar cuánto hay.
+    if (!insumo && result.data) {
+      onDone({ id: result.data.id, nombre: form.nombre, unidad: form.unidad as Insumo["unidad"], stockActual: 0 });
+    } else {
+      onDone();
+    }
   };
 
   return (

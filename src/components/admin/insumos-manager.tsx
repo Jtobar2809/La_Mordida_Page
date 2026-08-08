@@ -29,7 +29,8 @@ const UNIDAD_LABEL: Record<string, string> = {
 export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConProveedor[]; proveedores: Proveedor[] }) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<InsumoConProveedor | null | undefined>(undefined);
-  const [movingStock, setMovingStock] = React.useState<InsumoConProveedor | null>(null);
+  const [movingStock, setMovingStock] = React.useState<Pick<Insumo, "id" | "nombre" | "unidad" | "stockActual"> | null>(null);
+  const [movingStockIsInitial, setMovingStockIsInitial] = React.useState(false);
   const [composingFor, setComposingFor] = React.useState<InsumoConProveedor | null>(null);
 
   const bajoStock = insumos.filter((i) => i.activo && i.stockActual <= i.stockMinimo);
@@ -124,7 +125,7 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
                           <FlaskConical className="h-4 w-4" />
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" onClick={() => setMovingStock(insumo)} aria-label="Registrar movimiento">
+                      <Button size="icon" variant="ghost" onClick={() => { setMovingStock(insumo); setMovingStockIsInitial(false); }} aria-label="Registrar movimiento">
                         <ArrowUpDown className="h-4 w-4" />
                       </Button>
                       <Button size="icon" variant="ghost" onClick={() => setEditing(insumo)} aria-label="Editar">
@@ -153,19 +154,35 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
         <InsumoForm
           insumo={editing ?? null}
           proveedores={proveedores}
-          onDone={() => {
+          onDone={(nuevo) => {
             setEditing(undefined);
             router.refresh();
+            // Si se acaba de crear un insumo, abrimos de una vez el registro de
+            // stock inicial — antes esto quedaba en 0 sin que nadie avisara que
+            // había un paso más pendiente.
+            if (nuevo) {
+              setMovingStock(nuevo);
+              setMovingStockIsInitial(true);
+            }
           }}
         />
       </Modal>
 
-      <Modal open={movingStock !== null} onClose={() => setMovingStock(null)} title={`Movimiento de stock — ${movingStock?.nombre ?? ""}`}>
+      <Modal
+        open={movingStock !== null}
+        onClose={() => {
+          setMovingStock(null);
+          setMovingStockIsInitial(false);
+        }}
+        title={`Movimiento de stock — ${movingStock?.nombre ?? ""}`}
+      >
         {movingStock && (
           <MovimientoForm
             insumo={movingStock}
+            isInitial={movingStockIsInitial}
             onDone={() => {
               setMovingStock(null);
+              setMovingStockIsInitial(false);
               router.refresh();
             }}
           />

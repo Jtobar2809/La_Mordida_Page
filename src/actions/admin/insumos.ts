@@ -32,7 +32,7 @@ const insumoSchema = z.object({
   activo: z.boolean().default(true),
 });
 
-export async function upsertInsumo(input: unknown): Promise<ActionResult> {
+export async function upsertInsumo(input: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     await requireAdmin();
   } catch {
@@ -49,16 +49,18 @@ export async function upsertInsumo(input: unknown): Promise<ActionResult> {
       // El stock actual NUNCA se edita directo aquí: solo cambia vía registrarMovimiento,
       // para que quede siempre un registro trazable en MovimientoInsumo.
       await prisma.insumo.update({ where: { id }, data });
+      revalidatePath("/admin/inventario");
+      revalidatePath("/admin/inventario/recetas");
+      return { success: true, data: { id } };
     } else {
-      await prisma.insumo.create({ data: { ...data, stockActual: 0 } });
+      const creado = await prisma.insumo.create({ data: { ...data, stockActual: 0 } });
+      revalidatePath("/admin/inventario");
+      revalidatePath("/admin/inventario/recetas");
+      return { success: true, data: { id: creado.id } };
     }
   } catch {
     return { success: false, error: "Ya existe un insumo con un nombre muy similar." };
   }
-
-  revalidatePath("/admin/inventario");
-  revalidatePath("/admin/inventario/recetas");
-  return { success: true };
 }
 
 export async function deleteInsumo(id: string): Promise<ActionResult> {

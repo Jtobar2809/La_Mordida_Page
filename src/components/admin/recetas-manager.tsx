@@ -58,6 +58,23 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
     router.refresh();
   };
 
+  const handleUpdateCantidad = async (item: RecetaItem, nuevaCantidad: number) => {
+    if (!nuevaCantidad || nuevaCantidad <= 0) {
+      toast.error("La cantidad debe ser mayor a 0");
+      router.refresh(); // por si el input quedó en un valor inválido, lo devolvemos al guardado
+      return;
+    }
+    if (nuevaCantidad === item.cantidad) return;
+    const result = await upsertRecetaItem({ id: item.id, productId: item.productId, insumoId: item.insumoId, cantidad: nuevaCantidad });
+    if (!result.success) {
+      toast.error(result.error);
+      router.refresh();
+      return;
+    }
+    toast.success("Cantidad actualizada");
+    router.refresh();
+  };
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
       <div className="space-y-1">
@@ -114,7 +131,21 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
                   <tr key={item.id} className="bg-white dark:bg-charcoal-800">
                     <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">{item.insumo.nombre}</td>
                     <td className="px-4 py-3">
-                      {item.cantidad} {UNIDAD_LABEL[item.insumo.unidad]}
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          key={`${item.id}-${item.cantidad}`}
+                          type="number"
+                          step="any"
+                          min={0}
+                          defaultValue={item.cantidad}
+                          onBlur={(e) => handleUpdateCantidad(item, Number(e.target.value))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          }}
+                          className="w-20 rounded-lg border border-charcoal-200 bg-transparent px-2 py-1 text-sm focus:border-ember-500 focus:outline-none dark:border-charcoal-600 dark:text-cream"
+                        />
+                        <span className="text-xs text-charcoal-400">{UNIDAD_LABEL[item.insumo.unidad]}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">${(item.cantidad * item.insumo.costoUnitario).toLocaleString("es-CO")}</td>
                     <td className="px-4 py-3 text-right">

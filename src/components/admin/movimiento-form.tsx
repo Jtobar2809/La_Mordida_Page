@@ -17,7 +17,15 @@ const TIPOS = [
   { value: "AJUSTE", label: "Ajuste de conteo físico" },
 ];
 
-export function MovimientoForm({ insumo, onDone }: { insumo: Insumo; onDone: () => void }) {
+export function MovimientoForm({
+  insumo,
+  onDone,
+  isInitial,
+}: {
+  insumo: Pick<Insumo, "id" | "nombre" | "unidad" | "stockActual">;
+  onDone: () => void;
+  isInitial?: boolean;
+}) {
   const [tipo, setTipo] = React.useState<"ENTRADA" | "SALIDA" | "MERMA" | "AJUSTE">("ENTRADA");
   const [cantidad, setCantidad] = React.useState(0);
   // Para AJUSTE, el admin escribe cuánto hay REALMENTE en bodega (conteo físico),
@@ -54,6 +62,11 @@ export function MovimientoForm({ insumo, onDone }: { insumo: Insumo; onDone: () 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {isInitial && (
+        <p className="rounded-xl border border-olive-300 bg-olive-50 p-3 text-xs text-olive-800 dark:border-olive-700 dark:bg-olive-900/20 dark:text-olive-200">
+          Ya creaste el insumo <strong>{insumo.nombre}</strong> — registra aquí cuánto tienes ahora mismo, esto queda como su primer movimiento.
+        </p>
+      )}
       <p className="text-sm text-charcoal-400">
         Stock actual: <strong className="text-charcoal-800 dark:text-cream">{insumo.stockActual} {unidadLabel}</strong>
       </p>
