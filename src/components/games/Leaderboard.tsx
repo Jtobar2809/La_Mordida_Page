@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Medal } from "lucide-react";
+import { Trophy, Medal, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { getLeaderboardAction } from "@/actions/games";
@@ -15,14 +15,24 @@ const PERIODS: { value: LeaderboardPeriod; label: string }[] = [
   { value: "all", label: "Histórico" },
 ];
 
-const medalColor = ["text-mustard-400", "text-charcoal-300", "text-amber-700"];
+// Estilos del podio: los 3 primeros llevan medalla con su propio metal,
+// el resto solo el número. Da jerarquía visual sin necesidad de otro layout.
+const PODIUM = [
+  { medal: "text-mustard-400", row: "bg-mustard-400/10 ring-1 ring-mustard-300/40", ring: "ring-mustard-300" },
+  { medal: "text-charcoal-300", row: "bg-charcoal-400/10 ring-1 ring-charcoal-300/30", ring: "ring-charcoal-300" },
+  { medal: "text-amber-700", row: "bg-amber-700/10 ring-1 ring-amber-700/30", ring: "ring-amber-700/60" },
+];
 
 /**
  * Tabla de posiciones reutilizable para cualquier minijuego. Recibe el
- * slug del juego y consulta el mejor puntaje por usuario en 3 ventanas
- * de tiempo (hoy / semana / histórico). Si el usuario tiene sesión pero
- * no está en el top visible, se muestra su posición aparte ("Tú vas
- * #N") para darle un motivo concreto para volver a intentarlo.
+ * slug del juego y consulta el mejor puntaje por jugador en 3 ventanas
+ * de tiempo (hoy / semana / histórico).
+ *
+ * Aparecen todos los jugadores, con o sin cuenta: quien juega sin
+ * registrarse compite como "Anónimo #XXXXXX", donde el código lo emite
+ * el servidor y es irrepetible. Si el jugador no está en el top visible,
+ * se muestra su posición aparte ("Tú vas #N") para darle un motivo
+ * concreto para volver a intentarlo.
  */
 export function Leaderboard({
   game,
@@ -53,7 +63,7 @@ export function Leaderboard({
     // refreshKey fuerza recarga tras registrar un nuevo puntaje
   }, [game, period, refreshKey]);
 
-  const userInTop = data?.top.some((e) => e.userId === data.currentUserId);
+  const playerInTop = data?.top.some((e) => e.playerKey === data.currentPlayerKey);
 
   return (
     <Card className="mx-auto max-w-md p-5">
@@ -92,34 +102,57 @@ export function Leaderboard({
           <AnimatePresence mode="popLayout">
             <ul className="space-y-1.5">
               {data.top.map((entry, i) => {
-                const isMe = entry.userId === data.currentUserId;
+                const isMe = entry.playerKey === data.currentPlayerKey;
+                const podium = PODIUM[i];
                 return (
                   <motion.li
-                    key={entry.userId}
+                    key={entry.playerKey}
                     layout
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.03 }}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2",
+                      "flex items-center gap-3 rounded-xl px-3 py-2 transition-colors",
+                      podium?.row,
                       isMe && "bg-ember-50 ring-1 ring-ember-200 dark:bg-ember-500/10 dark:ring-ember-500/30"
                     )}
                   >
                     <span
                       className={cn(
                         "flex w-6 shrink-0 items-center justify-center font-display text-sm",
-                        medalColor[i] ?? "text-charcoal-400"
+                        podium?.medal ?? "text-charcoal-400"
                       )}
                     >
-                      {i < 3 ? <Medal className="h-4 w-4 fill-current" /> : i + 1}
+                      {podium ? <Medal className="h-4 w-4 fill-current drop-shadow-sm" /> : i + 1}
                     </span>
-                    <div className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-charcoal-100 dark:bg-charcoal-700">
-                      {entry.image && <Image src={entry.image} alt={entry.name ?? 'Avatar'} fill className="object-cover" /> }
+
+                    <div
+                      className={cn(
+                        "relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-charcoal-100 ring-2 ring-transparent dark:bg-charcoal-700",
+                        podium?.ring
+                      )}
+                    >
+                      {entry.image ? (
+                        <Image src={entry.image} alt={entry.name} fill className="object-cover" />
+                      ) : (
+                        <User className="h-4 w-4 text-charcoal-400" />
+                      )}
                     </div>
-                    <span className="flex-1 truncate text-sm font-medium text-charcoal-700 dark:text-charcoal-100">
-                      {isMe ? "Tú" : entry.name}
+
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium text-charcoal-700 dark:text-charcoal-100">
+                        {isMe ? "Tú" : entry.name}
+                      </span>
+                      {entry.isGuest && (
+                        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-charcoal-400">
+                          {isMe ? entry.name : "invitado"}
+                        </span>
+                      )}
                     </span>
-                    <span className="font-mono text-sm font-bold text-ember-600">{formatScore(entry.bestScore)}</span>
+
+                    <span className="font-mono text-sm font-bold text-ember-600 dark:text-ember-300">
+                      {formatScore(entry.bestScore)}
+                    </span>
                   </motion.li>
                 );
               })}
@@ -127,19 +160,23 @@ export function Leaderboard({
           </AnimatePresence>
         )}
 
-        {!loading && data?.userRank && !userInTop && (
+        {!loading && data?.playerRank && !playerInTop && (
           <div className="mt-3 flex items-center gap-3 rounded-xl bg-ember-50 px-3 py-2 ring-1 ring-ember-200 dark:bg-ember-500/10 dark:ring-ember-500/30">
             <span className="w-6 shrink-0 text-center font-display text-sm text-charcoal-400">
-              #{data.userRank.rank}
+              #{data.playerRank.rank}
             </span>
-            <span className="flex-1 text-sm font-medium text-charcoal-700 dark:text-charcoal-100">Tú</span>
-            <span className="font-mono text-sm font-bold text-ember-600">{formatScore(data.userRank.bestScore)}</span>
+            <span className="flex-1 text-sm font-medium text-charcoal-700 dark:text-charcoal-100">
+              Tú{data.isGuest && <span className="ml-1 text-xs text-charcoal-400">(invitado)</span>}
+            </span>
+            <span className="font-mono text-sm font-bold text-ember-600 dark:text-ember-300">
+              {formatScore(data.playerRank.bestScore)}
+            </span>
           </div>
         )}
 
-        {!loading && !data?.currentUserId && (
+        {!loading && data?.isGuest && (
           <p className="mt-4 text-center text-xs text-charcoal-400">
-            Inicia sesión para aparecer en la tabla de posiciones.
+            Juegas como invitado y ya compites en la tabla. Inicia sesión para aparecer con tu nombre y tu foto.
           </p>
         )}
       </div>

@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { useSession } from "next-auth/react";
-import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { Flame, Trophy, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Leaderboard } from "@/components/games/Leaderboard";
-import { submitGameScoreAction } from "@/actions/games";
+import { type MordiExpression } from "@/components/games/MordiSprite";
+import { GameLayout, GameOverlay, GameResult, GameShell, GameStat } from "@/components/games/GameShell";
+import { beginFrame, useHiDpiCanvas } from "@/components/games/canvas-utils";
+import { useScoreSubmit } from "@/components/games/useScoreSubmit";
+import { levelFor, ramp } from "@/components/games/difficulty";
 
 const GAME_SLUG = "salta-la-parrilla";
 const BEST_SCORE_KEY = "lm_game_best_salta-la-parrilla";
@@ -25,24 +26,56 @@ const MAX_FALL_SPEED = 620;
 const MAX_RISE_SPEED = -520;
 
 const PIPE_WIDTH = 62;
-const PIPE_GAP = 190; // hueco vertical entre la parrilla de arriba y la de abajo
 const PIPE_MIN_MARGIN = 70; // distancia mínima del hueco al borde superior/inferior
-const PIPE_SPACING_MS = 1500; // tiempo entre parrillas nuevas
-const PIPE_SPEED = 190; // px/s, constante (a diferencia de Runner, aquí no acelera — mantiene el ritmo predecible clave del género)
 
-type Pipe = { x: number; gapY: number; passed: boolean };
+// ── Dificultad progresiva ──
+// El género vive del ritmo predecible, así que la escalada es lenta y
+// sin sorpresas: el hueco se estrecha, las parrillas llegan más seguidas
+// y el desplazamiento acelera un poco, todo en función de cuántas
+// parrillas llevas pasadas. Cada parrilla guarda el hueco con el que
+// nació, para que estrecharlo no encoja retroactivamente las que ya
+// están en pantalla.
+const RAMP_OVER_PIPES = 25;
+const GAP_FROM = 200;
+const GAP_TO = 142;
+const SPACING_FROM = 1500; // ms entre parrillas
+const SPACING_TO = 1020;
+const SPEED_FROM = 185; // px/s
+const SPEED_TO = 268;
+
+const MAX_SPARKS = 30;
+
+type Pipe = { x: number; gapY: number; gap: number; passed: boolean };
+type Spark = { x: number; y: number; vx: number; vy: number; r: number; life: number };
 type RunState = "idle" | "playing" | "gameover";
 
 type GameRefState = {
   mordiY: number;
   velocityY: number;
   pipes: Pipe[];
+  sparks: Spark[];
   nextPipeInMs: number;
   elapsedMs: number;
   lastFrame: number;
   rafId: number;
   holding: boolean;
+  scoreFlash: number; // 0..1, destello al pasar una parrilla
 };
+
+function initialState(): GameRefState {
+  return {
+    mordiY: WORLD_HEIGHT / 2,
+    velocityY: 0,
+    pipes: [],
+    sparks: [],
+    nextPipeInMs: 800,
+    elapsedMs: 0,
+    lastFrame: 0,
+    rafId: 0,
+    holding: false,
+    scoreFlash: 0,
+  };
+}
 
 /**
  * Minijuego "Salta la Parrilla" (mecánica Flappy Bird): mantén presionado
@@ -52,27 +85,23 @@ type GameRefState = {
  * (aceleración mientras se mantiene presionado) en vez de saltos
  * discretos, y velocidad de desplazamiento constante — el ritmo
  * predecible es justamente lo que hace adictivo a este género.
+ *
+ * v2: buffer escalado al devicePixelRatio, parrillas con brasas y humo
+ * en vez de tubos planos, estela de chispas mientras Mordi sube, y
+ * sincronización del puntaje a React solo cuando cambia (antes se hacía
+ * un setState por frame).
  */
 export function SaltaLaParrilla() {
-  const { data: session } = useSession();
+  const { submit, leaderboardKey, savedAs } = useScoreSubmit(GAME_SLUG);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const dprRef = useHiDpiCanvas(canvasRef, WORLD_WIDTH, WORLD_HEIGHT);
 
   const [runState, setRunState] = React.useState<RunState>("idle");
   const [score, setScore] = React.useState(0);
   const [bestScore, setBestScore] = React.useState(0);
   const [isNewRecord, setIsNewRecord] = React.useState(false);
-  const [leaderboardKey, setLeaderboardKey] = React.useState(0);
 
-  const gameRef = React.useRef<GameRefState>({
-    mordiY: WORLD_HEIGHT / 2,
-    velocityY: 0,
-    pipes: [],
-    nextPipeInMs: 800,
-    elapsedMs: 0,
-    lastFrame: 0,
-    rafId: 0,
-    holding: false,
-  });
+  const gameRef = React.useRef<GameRefState>(initialState());
 
   React.useEffect(() => {
     try {
@@ -84,14 +113,7 @@ export function SaltaLaParrilla() {
   }, []);
 
   function startGame() {
-    const g = gameRef.current;
-    g.mordiY = WORLD_HEIGHT / 2;
-    g.velocityY = 0;
-    g.pipes = [];
-    g.nextPipeInMs = 800;
-    g.elapsedMs = 0;
-    g.lastFrame = 0;
-    g.holding = false;
+    gameRef.current = initialState();
     setScore(0);
     setIsNewRecord(false);
     setRunState("playing");
@@ -148,6 +170,7 @@ export function SaltaLaParrilla() {
     const g = gameRef.current;
     let cancelled = false;
     let currentScore = 0;
+    let renderedScore = -1;
 
     function frame(t: number) {
       if (cancelled) return;
@@ -161,15 +184,36 @@ export function SaltaLaParrilla() {
       g.velocityY = Math.max(MAX_RISE_SPEED, Math.min(MAX_FALL_SPEED, g.velocityY + accel * dt));
       g.mordiY += g.velocityY * dt;
 
+      // Chispas del "impulso" mientras sube
+      if (g.holding && g.sparks.length < MAX_SPARKS) {
+        g.sparks.push({
+          x: MORDI_X - 6 + (Math.random() - 0.5) * 10,
+          y: g.mordiY + MORDI_SIZE / 2 - 4,
+          vx: -40 - Math.random() * 60,
+          vy: 40 + Math.random() * 80,
+          r: 1.2 + Math.random() * 2,
+          life: 0.35 + Math.random() * 0.3,
+        });
+      }
+      for (const s of g.sparks) {
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.life -= dt;
+      }
+      g.sparks = g.sparks.filter((s) => s.life > 0);
+      g.scoreFlash = Math.max(0, g.scoreFlash - dt * 2.5);
+
       // Techo y suelo: chocar con cualquiera termina la partida
       const hitBounds = g.mordiY - MORDI_SIZE / 2 < 0 || g.mordiY + MORDI_SIZE / 2 > WORLD_HEIGHT;
 
-      // Spawn de parrillas
+      // Spawn de parrillas, con hueco y cadencia escalados por el puntaje
+      const speed = ramp(currentScore, SPEED_FROM, SPEED_TO, RAMP_OVER_PIPES);
       g.nextPipeInMs -= dt * 1000;
       if (g.nextPipeInMs <= 0) {
-        const gapY = PIPE_MIN_MARGIN + Math.random() * (WORLD_HEIGHT - 2 * PIPE_MIN_MARGIN - PIPE_GAP) + PIPE_GAP / 2;
-        g.pipes.push({ x: WORLD_WIDTH + PIPE_WIDTH, gapY, passed: false });
-        g.nextPipeInMs = PIPE_SPACING_MS;
+        const gap = ramp(currentScore, GAP_FROM, GAP_TO, RAMP_OVER_PIPES);
+        const gapY = PIPE_MIN_MARGIN + Math.random() * (WORLD_HEIGHT - 2 * PIPE_MIN_MARGIN - gap) + gap / 2;
+        g.pipes.push({ x: WORLD_WIDTH + PIPE_WIDTH, gapY, gap, passed: false });
+        g.nextPipeInMs = ramp(currentScore, SPACING_FROM, SPACING_TO, RAMP_OVER_PIPES);
       }
 
       const mordiBox = {
@@ -181,14 +225,15 @@ export function SaltaLaParrilla() {
 
       let collided = hitBounds;
       for (const pipe of g.pipes) {
-        pipe.x -= PIPE_SPEED * dt;
+        pipe.x -= speed * dt;
         if (!pipe.passed && pipe.x + PIPE_WIDTH < MORDI_X) {
           pipe.passed = true;
           currentScore += 1;
+          g.scoreFlash = 1;
         }
 
-        const topPipeBottom = pipe.gapY - PIPE_GAP / 2;
-        const bottomPipeTop = pipe.gapY + PIPE_GAP / 2;
+        const topPipeBottom = pipe.gapY - pipe.gap / 2;
+        const bottomPipeTop = pipe.gapY + pipe.gap / 2;
         const overlapsX = mordiBox.x < pipe.x + PIPE_WIDTH && mordiBox.x + mordiBox.w > pipe.x;
         if (overlapsX) {
           const hitsTopPipe = mordiBox.y < topPipeBottom;
@@ -198,14 +243,17 @@ export function SaltaLaParrilla() {
       }
       g.pipes = g.pipes.filter((p) => p.x > -PIPE_WIDTH);
 
-      setScore(currentScore);
+      if (currentScore !== renderedScore) {
+        renderedScore = currentScore;
+        setScore(currentScore);
+      }
 
       if (collided) {
         endGame(currentScore);
         return;
       }
 
-      draw(ctx, g, currentScore);
+      draw(ctx, g, currentScore, dprRef.current);
       g.rafId = requestAnimationFrame(frame);
     }
 
@@ -231,15 +279,7 @@ export function SaltaLaParrilla() {
       }
     }
 
-    if (session?.user) {
-      submitGameScoreAction({ game: GAME_SLUG, score }).then((result) => {
-        if (result.success) {
-          setLeaderboardKey((k) => k + 1);
-        } else {
-          toast.error(result.error);
-        }
-      });
-    }
+    submit(score);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runState]);
 
@@ -248,112 +288,122 @@ export function SaltaLaParrilla() {
     if (runState === "playing") return;
     const ctx = canvasRef.current?.getContext("2d");
     if (!ctx) return;
-    draw(ctx, gameRef.current, score);
-  }, [runState, score]);
+    draw(ctx, gameRef.current, score, dprRef.current);
+  }, [runState, score, dprRef]);
+
+  const mordiMood: MordiExpression =
+    runState === "gameover" ? (isNewRecord ? "love" : "dizzy") : runState === "playing" ? "surprised" : "happy";
 
   return (
-    <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 lg:grid-cols-[0.85fr_1fr] lg:items-start">
-      <Card className="p-6 text-center">
-        <h3 className="font-display text-2xl tracking-wide text-charcoal-900 dark:text-cream">SALTA LA PARRILLA</h3>
-        <p className="mt-1 text-sm text-charcoal-500 dark:text-charcoal-300">
-          Mantén presionado (o espacio) para subir, suelta para bajar. Esquiva las parrillas.
-        </p>
-
+    <GameLayout wide>
+      <GameShell
+        title="SALTA LA PARRILLA"
+        subtitle="Mantén presionado (o espacio) para que Mordi suba, suelta para que baje. Esquiva las parrillas encendidas."
+        mordi={mordiMood}
+        bareBoard
+        hud={
+          <>
+            <GameStat icon={<Flame className="h-4 w-4" />} label="Parrillas" value={score} />
+            <GameStat
+              icon={<TrendingUp className="h-4 w-4" />}
+              label="Nivel"
+              value={levelFor(score, 4)}
+              tone={score >= 12 ? "ember" : "neutral"}
+            />
+            {bestScore > 0 && (
+              <GameStat icon={<Trophy className="h-4 w-4" />} label="Récord" value={bestScore} tone="gold" />
+            )}
+          </>
+        }
+        footer={
+          runState === "gameover" ? (
+            <GameResult
+              isNewRecord={isNewRecord}
+              headline={`${score} ${score === 1 ? "parrilla" : "parrillas"}`}
+              bestLabel={bestScore > 0 ? `Tu récord personal: ${bestScore}` : undefined}
+              savedAs={savedAs}
+              onReplay={startGame}
+            />
+          ) : runState === "idle" ? (
+            <Button onClick={startGame} size="lg" className="w-full">
+              Jugar
+            </Button>
+          ) : (
+            <p className="text-center text-sm text-charcoal-500 dark:text-charcoal-300">
+              Mantén presionado para volar
+            </p>
+          )
+        }
+      >
         <div
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
-          className="relative mx-auto mt-4 max-w-xs cursor-pointer touch-none select-none overflow-hidden rounded-2xl"
+          className="relative mx-auto w-full max-w-[280px] cursor-pointer touch-none select-none overflow-hidden rounded-2xl"
           style={{ aspectRatio: `${WORLD_WIDTH} / ${WORLD_HEIGHT}` }}
         >
-          <canvas
-            ref={canvasRef}
-            width={WORLD_WIDTH}
-            height={WORLD_HEIGHT}
-            className="h-full w-full bg-char-gradient"
-          />
+          <canvas ref={canvasRef} width={WORLD_WIDTH} height={WORLD_HEIGHT} className="block h-full w-full" />
 
           {runState !== "playing" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-charcoal-900/50 text-cream backdrop-blur-[1px]">
-              {runState === "idle" && (
+            <GameOverlay mordi={runState === "gameover" ? (isNewRecord ? "love" : "dizzy") : "happy"}>
+              {runState === "idle" ? (
                 <>
                   <p className="font-display text-xl tracking-wide">Toca para empezar</p>
                   <p className="text-xs text-charcoal-200">Mantén presionado para volar</p>
                 </>
-              )}
-              {runState === "gameover" && (
+              ) : (
                 <>
-                  {isNewRecord && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-mustard-400/20 px-3 py-1 text-xs font-bold text-mustard-300">
-                      <Sparkles className="h-3.5 w-3.5" /> ¡NUEVO RÉCORD!
-                    </span>
-                  )}
                   <p className="font-display text-2xl tracking-wide">{score} parrillas</p>
-                  {!isNewRecord && bestScore > 0 && (
-                    <p className="text-xs text-charcoal-300">Tu récord: {bestScore}</p>
-                  )}
+                  <p className="text-xs text-charcoal-200">Toca para reintentar</p>
                 </>
               )}
-            </div>
+            </GameOverlay>
           )}
         </div>
-
-        <div className="mt-4 flex items-center justify-between text-sm font-semibold text-charcoal-700 dark:text-charcoal-200">
-          <span>Puntaje: {score}</span>
-          {bestScore > 0 && <span className="text-charcoal-400">Récord: {bestScore}</span>}
-        </div>
-
-        <div className="mt-6">
-          {runState === "idle" && (
-            <Button onClick={startGame} size="lg" className="w-full">
-              Jugar
-            </Button>
-          )}
-          {runState === "gameover" && (
-            <div className="space-y-3">
-              {!session?.user && (
-                <p className="text-xs text-charcoal-400">Inicia sesión para aparecer en la tabla de posiciones.</p>
-              )}
-              <Button onClick={startGame} size="lg" className="w-full">
-                Jugar de nuevo
-              </Button>
-            </div>
-          )}
-        </div>
-      </Card>
+      </GameShell>
 
       <Leaderboard game={GAME_SLUG} refreshKey={leaderboardKey} />
-    </div>
+    </GameLayout>
   );
 }
 
-/** Dibuja un frame completo: fondo, parrillas (tubos) y Mordi */
-function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number) {
-  ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+/** Dibuja un frame completo: fondo, parrillas, chispas y Mordi */
+function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number, dpr: number) {
+  beginFrame(ctx, dpr, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Fondo con gradiente vertical + viñeta
+  // Fondo con gradiente vertical
   const sky = ctx.createLinearGradient(0, 0, 0, WORLD_HEIGHT);
-  sky.addColorStop(0, "#2c1c14");
-  sky.addColorStop(1, "#1c130e");
+  sky.addColorStop(0, "#130C08");
+  sky.addColorStop(0.5, "#2C1C14");
+  sky.addColorStop(1, "#48200F");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Brasas difusas ambientales, con resplandor real (no solo círculos planos)
-  for (let i = 0; i < 5; i++) {
-    const bx = 60 + i * 90;
-    const by = 80 + (i % 2) * 40;
-    const emberGlow = ctx.createRadialGradient(bx, by, 0, bx, by, 34);
-    emberGlow.addColorStop(0, "rgba(232,92,43,0.22)");
+  // Brasas difusas ambientales, con parallax lento derivado del tiempo
+  for (let i = 0; i < 6; i++) {
+    const drift = ((g.elapsedMs / 40) * (0.3 + i * 0.05)) % (WORLD_WIDTH + 160);
+    const bx = WORLD_WIDTH + 80 - drift;
+    const by = 90 + i * 92;
+    const emberGlow = ctx.createRadialGradient(bx, by, 0, bx, by, 46);
+    emberGlow.addColorStop(0, "rgba(232,92,43,0.2)");
     emberGlow.addColorStop(1, "rgba(232,92,43,0)");
     ctx.fillStyle = emberGlow;
     ctx.beginPath();
-    ctx.arc(bx, by, 34, 0, Math.PI * 2);
+    ctx.arc(bx, by, 46, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // Parrillas (tubos) con hueco
   for (const pipe of g.pipes) {
-    drawPipe(ctx, pipe.x, pipe.gapY);
+    drawPipe(ctx, pipe.x, pipe.gapY, pipe.gap, g.elapsedMs);
+  }
+
+  // Chispas del impulso
+  for (const s of g.sparks) {
+    ctx.fillStyle = `rgba(255,190,100,${Math.max(0, s.life * 2)})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // Mordi
@@ -369,52 +419,76 @@ function draw(ctx: CanvasRenderingContext2D, g: GameRefState, score: number) {
     WORLD_HEIGHT * 0.75
   );
   vignette.addColorStop(0, "rgba(0,0,0,0)");
-  vignette.addColorStop(1, "rgba(0,0,0,0.35)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.4)");
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-  // Puntaje
-  ctx.font = "700 26px system-ui, sans-serif";
+  // Puntaje, con destello al sumar
+  const flash = g.scoreFlash;
+  ctx.font = `700 ${34 + flash * 8}px system-ui, sans-serif`;
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.fillText(String(score), WORLD_WIDTH / 2 + 1, 45);
-  ctx.fillStyle = "#FBF6EE";
-  ctx.fillText(String(score), WORLD_WIDTH / 2, 44);
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillText(String(score), WORLD_WIDTH / 2 + 2, 58);
+  ctx.fillStyle = flash > 0 ? `rgb(255,${230 - Math.round(flash * 60)},150)` : "#FBF6EE";
+  ctx.fillText(String(score), WORLD_WIDTH / 2, 56);
 }
 
-/** Par de tubos-parrilla con hueco central: rejilla, tapa metálica y sombra de profundidad */
-function drawPipe(ctx: CanvasRenderingContext2D, x: number, gapY: number) {
-  const topHeight = gapY - PIPE_GAP / 2;
-  const bottomY = gapY + PIPE_GAP / 2;
+/** Par de parrillas con hueco central: rejilla encendida, tapa metálica y resplandor de calor */
+function drawPipe(ctx: CanvasRenderingContext2D, x: number, gapY: number, gap: number, elapsedMs: number) {
+  const topHeight = gapY - gap / 2;
+  const bottomY = gapY + gap / 2;
+  const flicker = 0.75 + Math.sin(elapsedMs / 140 + x / 40) * 0.25;
 
   const bodyGrad = ctx.createLinearGradient(x, 0, x + PIPE_WIDTH, 0);
-  bodyGrad.addColorStop(0, "#2a1f1a");
-  bodyGrad.addColorStop(0.5, "#4a382f");
-  bodyGrad.addColorStop(1, "#2a1f1a");
+  bodyGrad.addColorStop(0, "#1D1410");
+  bodyGrad.addColorStop(0.35, "#4A382F");
+  bodyGrad.addColorStop(0.6, "#5C4638");
+  bodyGrad.addColorStop(1, "#1D1410");
 
-  // Tramo superior
+  // Tramos
   ctx.fillStyle = bodyGrad;
   ctx.fillRect(x, 0, PIPE_WIDTH, topHeight);
-  // Tramo inferior
   ctx.fillRect(x, bottomY, PIPE_WIDTH, WORLD_HEIGHT - bottomY);
 
-  // Tapas metálicas en el borde del hueco (le dan grosor/profundidad al tubo)
-  ctx.fillStyle = "#5a4436";
-  ctx.fillRect(x - 4, topHeight - 14, PIPE_WIDTH + 8, 14);
-  ctx.fillRect(x - 4, bottomY, PIPE_WIDTH + 8, 14);
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x - 4, topHeight - 14, PIPE_WIDTH + 8, 14);
-  ctx.strokeRect(x - 4, bottomY, PIPE_WIDTH + 8, 14);
+  // Rejilla encendida (barras horizontales que brillan)
+  ctx.fillStyle = `rgba(232,92,43,${0.85 * flicker})`;
+  for (let bar = 0; bar < Math.floor((topHeight - 18) / 22); bar++) {
+    ctx.fillRect(x + 7, 12 + bar * 22, PIPE_WIDTH - 14, 3);
+  }
+  for (let bar = 0; bar < Math.floor((WORLD_HEIGHT - bottomY - 24) / 22); bar++) {
+    ctx.fillRect(x + 7, bottomY + 30 + bar * 22, PIPE_WIDTH - 14, 3);
+  }
 
-  // Rejilla (barras horizontales brillantes) en ambos tramos
-  ctx.fillStyle = "#E85C2B";
-  for (let bar = 0; bar < Math.floor(topHeight / 22); bar++) {
-    ctx.fillRect(x + 6, 10 + bar * 22, PIPE_WIDTH - 12, 3);
-  }
-  for (let bar = 0; bar < Math.floor((WORLD_HEIGHT - bottomY - 14) / 22); bar++) {
-    ctx.fillRect(x + 6, bottomY + 20 + bar * 22, PIPE_WIDTH - 12, 3);
-  }
+  // Resplandor de calor asomando por el hueco
+  const heatTop = ctx.createLinearGradient(0, topHeight - 26, 0, topHeight + 2);
+  heatTop.addColorStop(0, "rgba(240,169,58,0)");
+  heatTop.addColorStop(1, `rgba(240,169,58,${0.5 * flicker})`);
+  ctx.fillStyle = heatTop;
+  ctx.fillRect(x - 4, topHeight - 26, PIPE_WIDTH + 8, 28);
+
+  const heatBottom = ctx.createLinearGradient(0, bottomY + 26, 0, bottomY - 2);
+  heatBottom.addColorStop(0, "rgba(240,169,58,0)");
+  heatBottom.addColorStop(1, `rgba(240,169,58,${0.5 * flicker})`);
+  ctx.fillStyle = heatBottom;
+  ctx.fillRect(x - 4, bottomY - 2, PIPE_WIDTH + 8, 28);
+
+  // Tapas metálicas en el borde del hueco (grosor/profundidad del tubo)
+  const capGrad = ctx.createLinearGradient(x - 5, 0, x + PIPE_WIDTH + 5, 0);
+  capGrad.addColorStop(0, "#3A2C24");
+  capGrad.addColorStop(0.45, "#7C6151");
+  capGrad.addColorStop(1, "#3A2C24");
+  ctx.fillStyle = capGrad;
+  ctx.beginPath();
+  ctx.roundRect(x - 5, topHeight - 16, PIPE_WIDTH + 10, 16, 3);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.roundRect(x - 5, bottomY, PIPE_WIDTH + 10, 16, 3);
+  ctx.fill();
+
+  // Filo brillante en las tapas
+  ctx.fillStyle = "rgba(255,235,200,0.35)";
+  ctx.fillRect(x - 4, topHeight - 15, PIPE_WIDTH + 8, 1.5);
+  ctx.fillRect(x - 4, bottomY + 1, PIPE_WIDTH + 8, 1.5);
 }
 
 /** Dibuja a Mordi volando: mismo diseño de cara que Mordi Runner, con giro según velocidad vertical */
@@ -426,57 +500,82 @@ function drawMordiFlyer(ctx: CanvasRenderingContext2D, g: GameRefState) {
 
   const r = MORDI_SIZE / 2;
 
-  // Cuerpo (forma de pan, igual estilo que Mordi Runner para consistencia visual)
-  const bodyGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.4, r * 0.2, 0, 0, r * 1.3);
-  bodyGrad.addColorStop(0, "#F5BE5C");
-  bodyGrad.addColorStop(1, "#DE8A1B");
-  ctx.fillStyle = bodyGrad;
+  // Pan inferior + relleno asomando
+  ctx.fillStyle = "#B87519";
   ctx.beginPath();
-  ctx.moveTo(-r, r * 0.5);
-  ctx.quadraticCurveTo(-r, -r, 0, -r);
-  ctx.quadraticCurveTo(r, -r, r, r * 0.5);
-  ctx.quadraticCurveTo(r, r, 0, r);
-  ctx.quadraticCurveTo(-r, r, -r, r * 0.5);
+  ctx.ellipse(0, r * 0.6, r * 0.92, r * 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#F5CE53";
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.92, r * 0.38);
+  ctx.lineTo(r * 0.92, r * 0.38);
+  ctx.lineTo(r * 0.6, r * 0.64);
+  ctx.lineTo(r * 0.2, r * 0.44);
+  ctx.lineTo(-r * 0.2, r * 0.64);
+  ctx.lineTo(-r * 0.6, r * 0.44);
   ctx.closePath();
   ctx.fill();
 
-  // Semíllas de sésamo
-  ctx.fillStyle = "rgba(255,246,232,0.85)";
+  // Cuerpo (forma de pan, igual estilo que Mordi Runner para consistencia visual)
+  const bodyGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.45, r * 0.15, 0, 0, r * 1.35);
+  bodyGrad.addColorStop(0, "#FFD98A");
+  bodyGrad.addColorStop(0.55, "#F0A93A");
+  bodyGrad.addColorStop(1, "#C87E18");
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(-r, r * 0.4);
+  ctx.quadraticCurveTo(-r, -r, 0, -r);
+  ctx.quadraticCurveTo(r, -r, r, r * 0.4);
+  ctx.quadraticCurveTo(r, r * 0.7, 0, r * 0.7);
+  ctx.quadraticCurveTo(-r, r * 0.7, -r, r * 0.4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Luz de borde
+  ctx.strokeStyle = "rgba(255,240,196,0.5)";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.72, -r * 0.3);
+  ctx.quadraticCurveTo(-r * 0.5, -r * 0.92, r * 0.15, -r * 0.9);
+  ctx.stroke();
+
+  // Semillas de sésamo
+  ctx.fillStyle = "rgba(255,246,232,0.9)";
   const seeds: [number, number][] = [
-    [-r * 0.35, -r * 0.55],
-    [0, -r * 0.7],
-    [r * 0.35, -r * 0.55],
+    [-r * 0.38, -r * 0.55],
+    [0, -r * 0.72],
+    [r * 0.38, -r * 0.55],
   ];
   seeds.forEach(([sx, sy]) => {
     ctx.beginPath();
-    ctx.ellipse(sx, sy, 1.6, 1, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy, 1.7, 1.05, 0, 0, Math.PI * 2);
     ctx.fill();
   });
 
   // Mejillas
-  ctx.fillStyle = "rgba(232,92,43,0.35)";
+  ctx.fillStyle = "rgba(232,92,43,0.32)";
   ctx.beginPath();
   ctx.arc(-r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
   ctx.arc(r * 0.55, r * 0.05, r * 0.16, 0, Math.PI * 2);
   ctx.fill();
 
-  // Ojos grandes y alerta (siempre en modo "vuelo", más abiertos que en Runner)
+  // Ojos grandes y alerta (siempre en modo "vuelo")
   ctx.fillStyle = "#1B1712";
   ctx.beginPath();
-  ctx.arc(-r * 0.28, -r * 0.05, 4.2, 0, Math.PI * 2);
-  ctx.arc(r * 0.28, -r * 0.05, 4.2, 0, Math.PI * 2);
+  ctx.arc(-r * 0.28, -r * 0.08, 4.4, 0, Math.PI * 2);
+  ctx.arc(r * 0.28, -r * 0.08, 4.4, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#FBF6EE";
   ctx.beginPath();
-  ctx.arc(-r * 0.28 + 1.4, -r * 0.05 - 1.4, 1.3, 0, Math.PI * 2);
-  ctx.arc(r * 0.28 + 1.4, -r * 0.05 - 1.4, 1.3, 0, Math.PI * 2);
+  ctx.arc(-r * 0.28 + 1.5, -r * 0.08 - 1.5, 1.4, 0, Math.PI * 2);
+  ctx.arc(r * 0.28 + 1.5, -r * 0.08 - 1.5, 1.4, 0, Math.PI * 2);
   ctx.fill();
 
   // Boca pequeña y redonda (sorpresa constante del vuelo)
   ctx.strokeStyle = "#1B1712";
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 2.6;
   ctx.beginPath();
-  ctx.ellipse(0, r * 0.38, r * 0.14, r * 0.11, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, r * 0.25, r * 0.13, r * 0.1, 0, 0, Math.PI * 2);
   ctx.stroke();
 
   ctx.restore();

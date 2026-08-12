@@ -2,32 +2,42 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSession } from "next-auth/react";
-import { toast } from "sonner";
-import { Sparkles, Timer } from "lucide-react";
+import { Flame, Target, Timer, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Leaderboard } from "@/components/games/Leaderboard";
-import { MordiSprite } from "@/components/games/MordiSprite";
-import { submitGameScoreAction } from "@/actions/games";
+import { MordiSprite, type MordiExpression } from "@/components/games/MordiSprite";
+import { IconChili } from "@/components/games/IngredientIcons";
+import { GameLayout, GameMeter, GameResult, GameShell, GameStat } from "@/components/games/GameShell";
+import { useScoreSubmit } from "@/components/games/useScoreSubmit";
+import { chanceFor, levelFor, ramp } from "@/components/games/difficulty";
 import { cn } from "@/lib/utils";
 
 const GAME_SLUG = "atrapa-la-mordida";
 const BEST_SCORE_KEY = "lm_game_best_atrapa-la-mordida";
 
 const GRID_SIZE = 9; // grid 3x3
-const GAME_DURATION = 25; // segundos
+const GAME_DURATION_MS = 25_000;
+const TICK_MS = 80; // resolución del reloj: suficiente para animar la barra sin re-renderizar de más
 
-// Dificultad progresiva: la ventana de aparición se acorta a medida que
-// sube el score, dentro de un piso mínimo para que siga siendo jugable.
-const BASE_MIN_MS = 650;
-const BASE_MAX_MS = 1000;
-const MIN_FLOOR_MS = 280;
-const MAX_FLOOR_MS = 480;
-const DIFFICULTY_STEP = 25; // ms que se recortan por cada acierto
+// ── Dificultad progresiva ──
+// La ventana de aparición se acorta con cada acierto, y a partir de
+// cierto puntaje empiezan a salir chiles: si tocas uno, pierdes racha y
+// un mordisco de tiempo. Así el juego no escala solo en reflejos sino
+// también en atención — mirar antes de tocar.
+const RAMP_OVER = 22; // aciertos que toma llegar a la dificultad máxima
+const WINDOW_MIN_FROM = 700;
+const WINDOW_MIN_TO = 230;
+const WINDOW_MAX_FROM = 1050;
+const WINDOW_MAX_TO = 360;
+
+const CHILI_STARTS_AT = 6; // primeros aciertos sin señuelos: se aprende el juego
+const CHILI_MAX_CHANCE = 0.34;
+const CHILI_RAMP_OVER = 18;
+const CHILI_TIME_PENALTY_MS = 1500;
 
 type GameState = "idle" | "playing" | "finished";
-type FloatingPlus = { id: number; cell: number };
+type Popper = { cell: number; kind: "mordi" | "chili" };
+type Burst = { id: number; cell: number; kind: "hit" | "chili" };
 
 function randomCell(exclude?: number) {
   let cell = Math.floor(Math.random() * GRID_SIZE);
@@ -37,38 +47,55 @@ function randomCell(exclude?: number) {
   return cell;
 }
 
-/** Color de la racha: se intensifica de ember a dorado a medida que crece */
-function comboColor(combo: number) {
-  if (combo >= 8) return "text-mustard-400";
-  if (combo >= 4) return "text-ember-500";
-  return "text-charcoal-400";
+/** Cuánto tiempo queda visible el personaje, según cuántos aciertos lleva el jugador */
+function visibleWindowMs(score: number) {
+  const minMs = ramp(score, WINDOW_MIN_FROM, WINDOW_MIN_TO, RAMP_OVER);
+  const maxMs = ramp(score, WINDOW_MAX_FROM, WINDOW_MAX_TO, RAMP_OVER);
+  return minMs + Math.random() * (maxMs - minMs);
 }
 
 /**
- * Minijuego "Atrapa la Mordida": Mordi aparece en una celda aleatoria de
- * una grilla 3x3 por una ventana de tiempo que se acorta con cada
- * acierto (dificultad progresiva). El personaje se dibuja con
- * MordiSprite (SVG inline), no con la imagen PNG — dentro del
- * motion.div animado del pop-in, next/image con fill no siempre
- * resolvía su tamaño a tiempo y Mordi terminaba invisible; el SVG
- * inline no tiene ese problema porque no depende de una petición de
- * red ni del layout del contenedor.
+ * Minijuego "Atrapa la Mordida": Mordi se asoma por una de las nueve
+ * bocas de la parrilla durante una ventana de tiempo que se acorta con
+ * cada acierto. Desde el sexto acierto empiezan a asomarse chiles como
+ * señuelo, con probabilidad creciente.
+ *
+ * El ciclo de aparición se maneja íntegramente con refs y un `runId`,
+ * NO con setState. La versión anterior llamaba a la función que
+ * programaba la siguiente aparición desde dentro de un updater de
+ * `setActiveCell`, es decir, durante la fase de render: React invoca los
+ * updaters varias veces (dos en StrictMode, más si detecta
+ * actualizaciones en fase de render), así que nacían varias cadenas de
+ * timeouts paralelas que se pisaban entre sí — cada una veía la celda de
+ * otra, decidía que ya no le correspondía reprogramar, y moría. Tras dos
+ * o tres apariciones no quedaba ninguna cadena viva y Mordi no volvía a
+ * salir nunca. Ahora la única fuente de verdad es `activeRef`, la
+ * reprogramación ocurre en el callback del timeout (fuera del render) y
+ * `runId` invalida cualquier timeout huérfano de una partida anterior.
  */
 export function AtrapaLaMordida() {
-  const { data: session } = useSession();
+  const { submit, leaderboardKey, savedAs } = useScoreSubmit(GAME_SLUG);
   const [state, setState] = React.useState<GameState>("idle");
-  const [activeCell, setActiveCell] = React.useState<number | null>(null);
+  const [active, setActive] = React.useState<Popper | null>(null);
   const [score, setScore] = React.useState(0);
   const [combo, setCombo] = React.useState(0);
-  const [timeLeft, setTimeLeft] = React.useState(GAME_DURATION);
-  const [floatingPlus, setFloatingPlus] = React.useState<FloatingPlus[]>([]);
+  const [bestCombo, setBestCombo] = React.useState(0);
+  const [timeLeftMs, setTimeLeftMs] = React.useState(GAME_DURATION_MS);
+  const [bursts, setBursts] = React.useState<Burst[]>([]);
+  const [missCell, setMissCell] = React.useState<number | null>(null);
   const [bestScore, setBestScore] = React.useState(0);
   const [isNewRecord, setIsNewRecord] = React.useState(false);
-  const [leaderboardKey, setLeaderboardKey] = React.useState(0);
 
+  // ── Estado del ciclo de aparición, fuera de React ──
+  const runIdRef = React.useRef(0); // invalida timeouts de partidas anteriores
+  const activeRef = React.useRef<Popper | null>(null);
+  const scoreRef = React.useRef(0);
+  const comboRef = React.useRef(0);
+  const deadlineRef = React.useRef(0); // se acorta al tocar un chile
   const appearTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownInterval = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const plusIdCounter = React.useRef(0);
+  const burstId = React.useRef(0);
+  const missTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     try {
@@ -79,77 +106,134 @@ export function AtrapaLaMordida() {
     }
   }, []);
 
-  const scheduleNextAppearance = React.useCallback((currentScore: number, prevCell?: number) => {
-    const cell = randomCell(prevCell);
-    setActiveCell(cell);
-
-    const reduction = Math.min(currentScore * DIFFICULTY_STEP, BASE_MIN_MS - MIN_FLOOR_MS);
-    const minMs = BASE_MIN_MS - reduction;
-    const maxMs = Math.max(BASE_MAX_MS - reduction, MAX_FLOOR_MS);
-    const visibleFor = minMs + Math.random() * (maxMs - minMs);
-
-    appearTimeout.current = setTimeout(() => {
-      setActiveCell((current) => {
-        if (current === cell) {
-          setCombo(0); // se le escapó: se rompe la racha
-          scheduleNextAppearance(currentScore, cell);
-        }
-        return current === cell ? null : current;
-      });
-    }, visibleFor);
-  }, []);
-
-  function startGame() {
-    setScore(0);
-    setCombo(0);
-    setTimeLeft(GAME_DURATION);
-    setIsNewRecord(false);
-    setFloatingPlus([]);
-    setState("playing");
-    scheduleNextAppearance(0);
-
-    countdownInterval.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          endGame();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-  }
-
-  function endGame() {
+  const clearTimers = React.useCallback(() => {
     if (appearTimeout.current) clearTimeout(appearTimeout.current);
     if (countdownInterval.current) clearInterval(countdownInterval.current);
-    setActiveCell(null);
+    if (missTimeout.current) clearTimeout(missTimeout.current);
+    appearTimeout.current = null;
+    countdownInterval.current = null;
+    missTimeout.current = null;
+  }, []);
+
+  /**
+   * Asoma a alguien (Mordi o un chile) en una celda y programa su
+   * desaparición. Si expira sin que lo atrapen, rompe la racha —solo si
+   * era Mordi— y se vuelve a llamar a sí misma. Siempre corre fuera del
+   * render (callback de timeout o handler de click), nunca dentro de un
+   * updater de setState.
+   */
+  const spawn = React.useCallback((runId: number, previousCell?: number) => {
+    if (runIdRef.current !== runId) return;
+
+    const cell = randomCell(previousCell);
+    const chiliChance = chanceFor(scoreRef.current, CHILI_STARTS_AT, CHILI_MAX_CHANCE, CHILI_RAMP_OVER);
+    const popper: Popper = { cell, kind: Math.random() < chiliChance ? "chili" : "mordi" };
+
+    activeRef.current = popper;
+    setActive(popper);
+
+    appearTimeout.current = setTimeout(() => {
+      if (runIdRef.current !== runId) return; // partida ya terminada o reiniciada
+      if (activeRef.current !== popper) return; // ya lo atraparon
+      activeRef.current = null;
+      setActive(null);
+      if (popper.kind === "mordi") {
+        // Dejar escapar a Mordi rompe la racha; dejar pasar un chile no.
+        comboRef.current = 0;
+        setCombo(0);
+      }
+      spawn(runId, cell);
+    }, visibleWindowMs(scoreRef.current));
+  }, []);
+
+  const endGame = React.useCallback(() => {
+    runIdRef.current += 1; // invalida cualquier timeout en vuelo
+    clearTimers();
+    activeRef.current = null;
+    setActive(null);
+    setTimeLeftMs(0);
     setState("finished");
+  }, [clearTimers]);
+
+  const startGame = React.useCallback(() => {
+    clearTimers();
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+
+    scoreRef.current = 0;
+    comboRef.current = 0;
+    activeRef.current = null;
+    setScore(0);
+    setCombo(0);
+    setBestCombo(0);
+    setTimeLeftMs(GAME_DURATION_MS);
+    setIsNewRecord(false);
+    setBursts([]);
+    setMissCell(null);
+    setState("playing");
+
+    spawn(runId);
+
+    deadlineRef.current = performance.now() + GAME_DURATION_MS;
+    countdownInterval.current = setInterval(() => {
+      const remaining = Math.max(0, deadlineRef.current - performance.now());
+      setTimeLeftMs(remaining);
+      if (remaining <= 0) endGame();
+    }, TICK_MS);
+  }, [clearTimers, endGame, spawn]);
+
+  function pushBurst(cell: number, kind: Burst["kind"]) {
+    const id = burstId.current++;
+    setBursts((b) => [...b, { id, cell, kind }]);
+    setTimeout(() => setBursts((b) => b.filter((p) => p.id !== id)), 650);
+  }
+
+  function shakeCell(cell: number) {
+    setMissCell(cell);
+    if (missTimeout.current) clearTimeout(missTimeout.current);
+    missTimeout.current = setTimeout(() => setMissCell(null), 240);
   }
 
   function handleCellClick(index: number) {
-    if (state !== "playing" || index !== activeCell) return;
+    if (state !== "playing") return;
 
-    const nextScore = score + 1;
-    setScore(nextScore);
-    setCombo((c) => c + 1);
-    setActiveCell(null);
+    const current = activeRef.current;
 
-    const plusId = plusIdCounter.current++;
-    setFloatingPlus((f) => [...f, { id: plusId, cell: index }]);
-    setTimeout(() => {
-      setFloatingPlus((f) => f.filter((p) => p.id !== plusId));
-    }, 600);
+    // Boca vacía: corta la racha, no resta puntos
+    if (!current || index !== current.cell) {
+      comboRef.current = 0;
+      setCombo(0);
+      shakeCell(index);
+      return;
+    }
 
+    const runId = runIdRef.current;
     if (appearTimeout.current) clearTimeout(appearTimeout.current);
-    scheduleNextAppearance(nextScore, index);
+    activeRef.current = null;
+    setActive(null);
+
+    if (current.kind === "chili") {
+      // Señuelo: racha a cero y mordisco al reloj
+      comboRef.current = 0;
+      setCombo(0);
+      deadlineRef.current -= CHILI_TIME_PENALTY_MS;
+      shakeCell(index);
+      pushBurst(index, "chili");
+      spawn(runId, index);
+      return;
+    }
+
+    scoreRef.current += 1;
+    comboRef.current += 1;
+    setScore(scoreRef.current);
+    setCombo(comboRef.current);
+    setBestCombo((b) => Math.max(b, comboRef.current));
+    pushBurst(index, "hit");
+
+    spawn(runId, index);
   }
 
-  React.useEffect(() => {
-    return () => {
-      if (appearTimeout.current) clearTimeout(appearTimeout.current);
-      if (countdownInterval.current) clearInterval(countdownInterval.current);
-    };
-  }, []);
+  React.useEffect(() => clearTimers, [clearTimers]);
 
   // Al terminar: actualiza récord local y registra el puntaje para el leaderboard
   React.useEffect(() => {
@@ -165,150 +249,197 @@ export function AtrapaLaMordida() {
       }
     }
 
-    if (session?.user) {
-      submitGameScoreAction({ game: GAME_SLUG, score }).then((result) => {
-        if (result.success) {
-          setLeaderboardKey((k) => k + 1);
-        } else {
-          toast.error(result.error);
-        }
-      });
-    }
+    submit(score);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  const secondsLeft = Math.ceil(timeLeftMs / 1000);
+  const timeRatio = timeLeftMs / GAME_DURATION_MS;
+  const running = state === "playing";
+  const level = levelFor(score, 4);
+
+  const mordiMood: MordiExpression =
+    state === "finished"
+      ? isNewRecord
+        ? "love"
+        : score > 0
+          ? "wink"
+          : "sad"
+      : running
+        ? combo >= 5
+          ? "cool"
+          : "determined"
+        : "happy";
+
   return (
-    <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-      <Card className="overflow-hidden p-0 text-center">
-        <div className="bg-char-gradient px-6 pb-16 pt-6 text-cream">
-          <h3 className="font-display text-2xl tracking-wide">ATRAPA LA MORDIDA</h3>
-          <p className="mt-1 text-sm text-charcoal-200">
-            Toca a Mordi antes de que se escape. ¡Se pone más rápido con cada acierto!
-          </p>
-
-          <div className="mt-5 flex items-center justify-between text-sm font-semibold">
-            <span className="rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm">Puntaje: {score}</span>
-            <AnimatePresence mode="wait">
-              {combo >= 3 && state === "playing" && (
-                <motion.span
-                  key={combo}
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.6, opacity: 0 }}
-                  className={cn("flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm", comboColor(combo))}
-                >
-                  <Sparkles className="h-4 w-4" /> Racha x{combo}
-                </motion.span>
-              )}
-            </AnimatePresence>
-            {state === "playing" && (
-              <span className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 backdrop-blur-sm">
-                <Timer className="h-3.5 w-3.5" /> {timeLeft}s
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Tablero — se solapa sobre el header oscuro con sombra elevada */}
-        <div className="-mt-10 px-6 pb-6">
-          <div className="grid grid-cols-3 gap-3 rounded-2xl bg-white p-3 shadow-premium dark:bg-charcoal-800">
-            {Array.from({ length: GRID_SIZE }).map((_, i) => (
-              <button
+    <GameLayout>
+      <GameShell
+        title="ATRAPA LA MORDIDA"
+        subtitle="Mordi se asoma por la parrilla. Tócalo antes de que se esconda — pero cuidado con los chiles: te queman la racha y el reloj."
+        mordi={mordiMood}
+        hud={
+          <>
+            <GameStat icon={<Target className="h-4 w-4" />} label="Puntos" value={score} />
+            <GameStat
+              icon={<Flame className={cn("h-4 w-4", combo >= 5 && "animate-pulse")} />}
+              label="Racha"
+              value={`x${combo}`}
+              tone={combo >= 8 ? "gold" : combo >= 3 ? "ember" : "neutral"}
+            />
+            <GameStat icon={<TrendingUp className="h-4 w-4" />} label="Nivel" value={level} tone={level >= 4 ? "ember" : "neutral"} />
+            <GameStat
+              icon={<Timer className="h-4 w-4" />}
+              value={`${running || state === "finished" ? secondsLeft : 25}s`}
+              tone={running && secondsLeft <= 5 ? "danger" : "neutral"}
+            />
+            <div className="mt-1 w-full">
+              <GameMeter value={running ? timeRatio : 1} tone={secondsLeft <= 5 && running ? "danger" : "ember"} />
+            </div>
+          </>
+        }
+        footer={
+          state === "finished" ? (
+            <GameResult
+              isNewRecord={isNewRecord}
+              headline={`${score} ${score === 1 ? "mordida" : "mordidas"}`}
+              detail={bestCombo >= 3 ? `Mejor racha: x${bestCombo}` : undefined}
+              bestLabel={bestScore > 0 ? `Tu récord personal: ${bestScore}` : undefined}
+              savedAs={savedAs}
+              onReplay={startGame}
+            />
+          ) : running ? (
+            <p className="text-center text-sm font-medium text-charcoal-500 dark:text-charcoal-300">
+              {score >= CHILI_STARTS_AT
+                ? "¡Ojo con los chiles! 🌶️"
+                : combo >= 4
+                  ? "¡Sigue así!"
+                  : "Atento a la parrilla…"}
+            </p>
+          ) : (
+            <Button onClick={startGame} size="lg" className="w-full">
+              Jugar
+            </Button>
+          )
+        }
+      >
+        {/* Tablero: plancha de parrilla con nueve bocas */}
+        <div
+          className="grid grid-cols-3 gap-2 rounded-xl p-2.5 sm:gap-2.5 sm:p-3"
+          style={{
+            background:
+              "linear-gradient(180deg,#3B2A1E 0%,#241812 55%,#181008 100%)," +
+              "repeating-linear-gradient(90deg,rgba(0,0,0,0.25) 0 2px,transparent 2px 16px)",
+            boxShadow: "inset 0 2px 12px rgba(0,0,0,0.55)",
+          }}
+        >
+          {Array.from({ length: GRID_SIZE }).map((_, i) => {
+            const isActive = active?.cell === i;
+            const isChili = isActive && active?.kind === "chili";
+            return (
+              <motion.button
                 key={i}
                 type="button"
                 onClick={() => handleCellClick(i)}
-                disabled={state !== "playing"}
-                className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b from-charcoal-50 to-charcoal-100 shadow-inner disabled:cursor-default dark:from-charcoal-900/60 dark:to-charcoal-900"
+                disabled={!running}
+                animate={missCell === i ? { x: [0, -4, 4, -3, 0] } : { x: 0 }}
+                transition={{ duration: 0.22 }}
+                aria-label={`Boca ${i + 1}`}
+                className="relative aspect-square overflow-hidden rounded-2xl disabled:cursor-default"
+                style={{
+                  background: "radial-gradient(120% 100% at 50% 0%, #4A3527 0%, #2A1D14 55%, #150E09 100%)",
+                  boxShadow: "inset 0 3px 10px rgba(0,0,0,0.7), inset 0 -1px 0 rgba(255,255,255,0.06)",
+                }}
               >
+                {/* Boca del horno: hueco oscuro al fondo */}
+                <div className="pointer-events-none absolute inset-x-[16%] bottom-[14%] h-[30%] rounded-[50%] bg-black/70" />
+
+                {/* Resplandor: cálido para Mordi, rojo de peligro para el chile */}
                 <AnimatePresence>
-                  {activeCell === i && (
+                  {isActive && (
                     <motion.div
-                      initial={{ scale: 0, opacity: 0, rotate: -12, y: 10 }}
-                      animate={{ scale: 1, opacity: 1, rotate: 0, y: 0 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      transition={{ duration: 0.18, ease: "backOut" }}
-                      className="absolute inset-1.5 drop-shadow-lg"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="pointer-events-none absolute inset-0"
+                      style={{
+                        background: isChili
+                          ? "radial-gradient(circle at 50% 70%, rgba(220,40,30,0.5) 0%, rgba(220,40,30,0) 65%)"
+                          : "radial-gradient(circle at 50% 70%, rgba(232,92,43,0.45) 0%, rgba(232,92,43,0) 65%)",
+                      }}
+                    />
+                  )}
+                </AnimatePresence>
+
+                {/* Quien se asoma */}
+                <AnimatePresence>
+                  {isActive && (
+                    <motion.div
+                      key={isChili ? "chili" : "mordi"}
+                      initial={{ y: "55%", scale: 0.75, opacity: 0 }}
+                      animate={{ y: "0%", scale: 1, opacity: 1 }}
+                      exit={{ y: "60%", scale: 0.7, opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 560, damping: 28 }}
+                      className="pointer-events-none absolute inset-x-[10%] bottom-[18%] top-[6%]"
                     >
-                      <MordiSprite expression="surprised" className="h-full w-full" />
+                      {isChili ? (
+                        <IconChili className="h-full w-full drop-shadow-lg" />
+                      ) : (
+                        <MordiSprite expression="surprised" animate={false} className="h-full w-full drop-shadow-lg" />
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                <AnimatePresence>
-                  {floatingPlus
-                    .filter((p) => p.cell === i)
-                    .map((p) => (
-                      <motion.span
-                        key={p.id}
-                        initial={{ opacity: 1, y: 0, scale: 0.8 }}
-                        animate={{ opacity: 0, y: -36, scale: 1.2 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.6, ease: "easeOut" }}
-                        className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center font-display text-2xl text-ember-500 drop-shadow"
-                      >
-                        +1
-                      </motion.span>
-                    ))}
-                </AnimatePresence>
-              </button>
-            ))}
-          </div>
+                {/* Labio frontal de la boca: tapa la base para que parezca que sale del hueco */}
+                <div
+                  className="pointer-events-none absolute inset-x-[8%] bottom-[6%] h-[26%] rounded-[50%]"
+                  style={{
+                    background: "linear-gradient(180deg,#5A422F 0%,#33241A 45%,#1A120C 100%)",
+                    boxShadow: "0 -3px 10px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
+                  }}
+                />
+
+                {/* Impacto: anillo + marcador.
+                    Sin AnimatePresence: cada burst se retira solo con su propio
+                    timeout y solo tiene animación de entrada, así que envolverlos
+                    costaría un Fragment que AnimatePresence no sabe rastrear. */}
+                {bursts
+                  .filter((b) => b.cell === i)
+                  .map((b) => (
+                    <motion.span
+                      key={`ring-${b.id}`}
+                      initial={{ scale: 0.3, opacity: 0.9 }}
+                      animate={{ scale: 1.7, opacity: 0 }}
+                      transition={{ duration: 0.5, ease: "easeOut" }}
+                      className={cn(
+                        "pointer-events-none absolute inset-[18%] z-10 rounded-full border-[3px]",
+                        b.kind === "hit" ? "border-mustard-300" : "border-red-400"
+                      )}
+                    />
+                  ))}
+                {bursts
+                  .filter((b) => b.cell === i)
+                  .map((b) => (
+                    <motion.span
+                      key={`plus-${b.id}`}
+                      initial={{ opacity: 1, y: 4, scale: 0.7 }}
+                      animate={{ opacity: 0, y: -34, scale: 1.25 }}
+                      transition={{ duration: 0.65, ease: "easeOut" }}
+                      className={cn(
+                        "pointer-events-none absolute inset-0 z-20 flex items-center justify-center font-display drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]",
+                        b.kind === "hit" ? "text-2xl text-mustard-200" : "text-lg text-red-300"
+                      )}
+                    >
+                      {b.kind === "hit" ? "+1" : `-${CHILI_TIME_PENALTY_MS / 1000}s`}
+                    </motion.span>
+                  ))}
+              </motion.button>
+            );
+          })}
         </div>
-
-        <div className="px-6 pb-6">
-          {state === "idle" && (
-            <Button onClick={startGame} size="lg" className="w-full">
-              Jugar
-            </Button>
-          )}
-
-          {state === "playing" && <p className="text-sm text-charcoal-400">¡Sigue así!</p>}
-
-          {state === "finished" && (
-            <div className="space-y-3">
-              <AnimatePresence mode="wait">
-                {isNewRecord ? (
-                  <motion.div
-                    key="record"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="flex flex-col items-center gap-1"
-                  >
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-mustard-400/15 px-3 py-1 text-xs font-bold text-mustard-500">
-                      <Sparkles className="h-3.5 w-3.5" /> ¡NUEVO RÉCORD!
-                    </span>
-                    <p className="font-display text-2xl tracking-wide text-charcoal-900 dark:text-cream">
-                      {score} puntos
-                    </p>
-                  </motion.div>
-                ) : (
-                  <motion.p
-                    key="normal"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream"
-                  >
-                    Terminaste con {score} puntos
-                  </motion.p>
-                )}
-              </AnimatePresence>
-
-              {!isNewRecord && bestScore > 0 && (
-                <p className="text-xs text-charcoal-400">Tu récord personal: {bestScore}</p>
-              )}
-              {!session?.user && (
-                <p className="text-xs text-charcoal-400">Inicia sesión para aparecer en la tabla de posiciones.</p>
-              )}
-
-              <Button onClick={startGame} size="lg" className="w-full">
-                Jugar de nuevo
-              </Button>
-            </div>
-          )}
-        </div>
-      </Card>
+      </GameShell>
 
       <Leaderboard game={GAME_SLUG} refreshKey={leaderboardKey} />
-    </div>
+    </GameLayout>
   );
 }

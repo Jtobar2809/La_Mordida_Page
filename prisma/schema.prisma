@@ -476,16 +476,33 @@ model Review {
   createdAt  DateTime @default(now())
 }
 
+/// Identidad de un jugador sin cuenta. El código es público (se muestra
+/// en la tabla de posiciones como "Anónimo #XXXXXX") y es la clave
+/// primaria, así que Postgres garantiza que sea irrepetible.
+model GuestPlayer {
+  code      String   @id
+  createdAt DateTime @default(now())
+}
+
+/// Una partida jugada. Puede pertenecer a un usuario registrado o a un
+/// invitado: la tabla de posiciones agrupa por `playerKey`, que vale
+/// "u:<userId>" para usuarios y "g:<guestCode>" para invitados. Así el
+/// leaderboard es una sola consulta, sin COALESCE ni UNION, y todo el
+/// mundo aparece en la tabla aunque no se haya registrado.
 model GameSession {
   id        String   @id @default(cuid())
-  userId    String
+  playerKey String
+  userId    String?
+  guestCode String?
   game      String
   score     Int
   createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId, game, createdAt])
   @@index([game, score])
+  @@index([game, playerKey])
+  @@index([guestCode])
 }
 
 model Settings {

@@ -2,12 +2,11 @@
 
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSession } from "next-auth/react";
-import { toast } from "sonner";
-import { Sparkles } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Target, TrendingUp, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Leaderboard } from "@/components/games/Leaderboard";
+import { MordiSprite, type MordiExpression } from "@/components/games/MordiSprite";
+import { GameLayout, GameResult, GameShell, GameStat } from "@/components/games/GameShell";
 import {
   IconBun,
   IconBunDouble,
@@ -18,28 +17,42 @@ import {
   IconBacon,
   IconBurgerComplete,
 } from "@/components/games/IngredientIcons";
-import { submitGameScoreAction } from "@/actions/games";
+import { useScoreSubmit } from "@/components/games/useScoreSubmit";
+import { chanceFor, levelFor, ramp } from "@/components/games/difficulty";
+import { cn } from "@/lib/utils";
 
 const GAME_SLUG = "combo-perfecto";
 const BEST_SCORE_KEY = "lm_game_best_combo-perfecto";
 
 const GRID_SIZE = 4;
 
+// ── Dificultad progresiva ──
+// El 2048 clásico se endurece solo porque el tablero se llena, pero muy
+// lentamente. Aquí se acelera por dos vías: las fichas nuevas son cada
+// vez más pobres (casi siempre nivel 0, que obliga a más fusiones) y a
+// partir de cierto puntaje a veces caen dos de golpe, que es lo que
+// realmente ahoga el espacio libre.
+const RAMP_OVER_POINTS = 2000;
+const LOW_TILE_CHANCE_FROM = 0.9; // probabilidad de que la ficha nueva sea nivel 0
+const LOW_TILE_CHANCE_TO = 0.97;
+const DOUBLE_SPAWN_STARTS_AT = 300;
+const DOUBLE_SPAWN_MAX_CHANCE = 0.55;
+
 // Niveles del ingrediente, en orden de fusión: 2 "Pan" se fusionan en 1
-// "Pan doble", 2 "Pan doble" en "Carne", etc. — hasta llegar a la
+// "Pan doble", 2 "Pan doble" en "Queso", etc. — hasta llegar a la
 // hamburguesa completa (nivel máximo), que es la "meta" visual del juego.
 // Iconos SVG propios en vez de emojis (consistencia visual entre
 // sistemas operativos), con gradiente de 2 tonos por nivel para dar
 // sensación de profundidad en vez de bloques de color plano.
 const LEVELS = [
-  { label: "Pan", Icon: IconBun, from: "#F2D9A0", to: "#E0AD5C" },
-  { label: "Pan x2", Icon: IconBunDouble, from: "#E8C083", to: "#C88B3E" },
-  { label: "Queso", Icon: IconCheese, from: "#FBE27A", to: "#E8B93A" },
-  { label: "Tomate", Icon: IconTomato, from: "#EA6B5C", to: "#C23B31" },
-  { label: "Lechuga", Icon: IconLettuce, from: "#9CC178", to: "#6E8F4C" },
-  { label: "Carne", Icon: IconPatty, from: "#8A5237", to: "#5C3320" },
-  { label: "Tocino", Icon: IconBacon, from: "#DB6E62", to: "#A93B30" },
-  { label: "¡Mordida!", Icon: IconBurgerComplete, from: "#F0A05C", to: "#E85C2B" },
+  { label: "Pan", Icon: IconBun, from: "#F7E3BC", to: "#DFAF60" },
+  { label: "Pan x2", Icon: IconBunDouble, from: "#EFC98F", to: "#C4873A" },
+  { label: "Queso", Icon: IconCheese, from: "#FDEB9C", to: "#E4B02C" },
+  { label: "Tomate", Icon: IconTomato, from: "#F2837A", to: "#B8342A" },
+  { label: "Lechuga", Icon: IconLettuce, from: "#B4D493", to: "#63813F" },
+  { label: "Carne", Icon: IconPatty, from: "#9A6042", to: "#4E2A1A" },
+  { label: "Tocino", Icon: IconBacon, from: "#E2837A", to: "#9E3227" },
+  { label: "¡Mordida!", Icon: IconBurgerComplete, from: "#F5B26A", to: "#E85C2B" },
 ] as const;
 
 // LEVELS nunca está vacío (es un literal fijo definido arriba, con 8
@@ -73,8 +86,12 @@ function emptyCells(grid: Grid): [number, number][] {
   return cells;
 }
 
-/** Coloca una ficha nueva (90% nivel 0, 10% nivel 1) en una celda vacía aleatoria */
-function spawnTile(grid: Grid): Grid {
+/**
+ * Coloca una ficha nueva en una celda vacía aleatoria. `lowChance` es la
+ * probabilidad de que salga de nivel 0 (la peor): sube con el puntaje,
+ * así que avanzar exige cada vez más fusiones.
+ */
+function spawnTile(grid: Grid, lowChance = LOW_TILE_CHANCE_FROM): Grid {
   const empties = emptyCells(grid);
   if (empties.length === 0) return grid;
   const target = empties[Math.floor(Math.random() * empties.length)];
@@ -82,7 +99,7 @@ function spawnTile(grid: Grid): Grid {
   const [r, c] = target;
   const next = cloneGrid(grid);
   const row = next[r];
-  if (row) row[c] = Math.random() < 0.9 ? 0 : 1;
+  if (row) row[c] = Math.random() < lowChance ? 0 : 1;
   return next;
 }
 
@@ -170,25 +187,47 @@ function hasMovesLeft(grid: Grid): boolean {
   return false;
 }
 
+/** Nivel más alto presente en la grilla, para mostrar el progreso hacia "¡Mordida!" */
+function highestLevel(grid: Grid): number {
+  let best = 0;
+  for (const row of grid) {
+    for (const cell of row) {
+      if (cell !== null && cell > best) best = cell;
+    }
+  }
+  return best;
+}
+
 /**
  * Minijuego "Combo Perfecto" (mecánica de 2048): desliza los ingredientes
  * en una dirección; los de mismo nivel que colisionan se fusionan en el
- * siguiente nivel de la hamburguesa. Controles: flechas del teclado o
- * swipe táctil. Termina cuando la grilla está llena y no hay más
- * fusiones posibles. Mecánica ya probada como una de las más adictivas
- * en juegos casuales — aquí con la temática de ingredientes de la marca.
+ * siguiente nivel de la hamburguesa. Controles: flechas del teclado,
+ * swipe táctil o el pad en pantalla. Termina cuando la grilla está llena
+ * y no hay más fusiones posibles.
+ *
+ * El movimiento se calcula sobre `gridRef` y no dentro de un updater de
+ * `setGrid`: React invoca los updaters durante el render (dos veces en
+ * StrictMode), así que disparar `setScore`/`setState` desde ahí dentro
+ * duplicaba puntos y efectos.
  */
 export function ComboPerfecto() {
-  const { data: session } = useSession();
+  const { submit, leaderboardKey, savedAs } = useScoreSubmit(GAME_SLUG);
   const [grid, setGrid] = React.useState<Grid>(emptyGrid());
   const [state, setState] = React.useState<GameState>("idle");
   const [score, setScore] = React.useState(0);
   const [bestScore, setBestScore] = React.useState(0);
   const [isNewRecord, setIsNewRecord] = React.useState(false);
-  const [leaderboardKey, setLeaderboardKey] = React.useState(0);
   const [pulse, setPulse] = React.useState(0); // fuerza re-render de animación en cada movimiento
+  const [gainPop, setGainPop] = React.useState<{ id: number; amount: number } | null>(null);
 
+  const gridRef = React.useRef<Grid>(emptyGrid());
+  const stateRef = React.useRef<GameState>("idle");
+  const scoreRef = React.useRef(0); // el puntaje manda la dificultad, y se lee fuera del render
   const touchStart = React.useRef<{ x: number; y: number } | null>(null);
+  const gainId = React.useRef(0);
+  const gainTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  stateRef.current = state;
 
   React.useEffect(() => {
     try {
@@ -199,35 +238,54 @@ export function ComboPerfecto() {
     }
   }, []);
 
+  React.useEffect(() => {
+    return () => {
+      if (gainTimeout.current) clearTimeout(gainTimeout.current);
+    };
+  }, []);
+
   function startGame() {
     let g = emptyGrid();
     g = spawnTile(g);
     g = spawnTile(g);
+    gridRef.current = g;
+    scoreRef.current = 0;
     setGrid(g);
     setScore(0);
+    setGainPop(null);
     setIsNewRecord(false);
     setState("playing");
   }
 
-  const handleMove = React.useCallback(
-    (direction: Direction) => {
-      setGrid((current) => {
-        const { grid: nextGrid, gained, moved } = move(current, direction);
-        if (!moved) return current;
+  const handleMove = React.useCallback((direction: Direction) => {
+    if (stateRef.current !== "playing") return;
 
-        const withSpawn = spawnTile(nextGrid);
-        setScore((s) => s + gained);
-        setPulse((p) => p + 1);
+    const { grid: nextGrid, gained, moved } = move(gridRef.current, direction);
+    if (!moved) return;
 
-        if (!hasMovesLeft(withSpawn)) {
-          setState("finished");
-        }
+    // Dificultad: fichas cada vez más pobres y, más adelante, tandas dobles
+    const currentScore = scoreRef.current;
+    const lowChance = ramp(currentScore, LOW_TILE_CHANCE_FROM, LOW_TILE_CHANCE_TO, RAMP_OVER_POINTS);
+    let withSpawn = spawnTile(nextGrid, lowChance);
+    if (Math.random() < chanceFor(currentScore, DOUBLE_SPAWN_STARTS_AT, DOUBLE_SPAWN_MAX_CHANCE, RAMP_OVER_POINTS)) {
+      withSpawn = spawnTile(withSpawn, lowChance);
+    }
 
-        return withSpawn;
-      });
-    },
-    []
-  );
+    gridRef.current = withSpawn;
+    setGrid(withSpawn);
+    setPulse((p) => p + 1);
+
+    if (gained > 0) {
+      scoreRef.current = currentScore + gained;
+      setScore(scoreRef.current);
+      const id = gainId.current++;
+      setGainPop({ id, amount: gained });
+      if (gainTimeout.current) clearTimeout(gainTimeout.current);
+      gainTimeout.current = setTimeout(() => setGainPop(null), 700);
+    }
+
+    if (!hasMovesLeft(withSpawn)) setState("finished");
+  }, []);
 
   // ── Input: flechas del teclado ──
   React.useEffect(() => {
@@ -285,128 +343,199 @@ export function ComboPerfecto() {
       }
     }
 
-    if (session?.user) {
-      submitGameScoreAction({ game: GAME_SLUG, score }).then((result) => {
-        if (result.success) {
-          setLeaderboardKey((k) => k + 1);
-        } else {
-          toast.error(result.error);
-        }
-      });
-    }
+    submit(score);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
+  const top = highestLevel(grid);
+  const topLevel = LEVELS[top] ?? FALLBACK_LEVEL;
+  const nextLevel = LEVELS[Math.min(top + 1, LEVELS.length - 1)] ?? FALLBACK_LEVEL;
+  const reachedGoal = top >= LEVELS.length - 1;
+
+  const mordiMood: MordiExpression =
+    state === "finished" ? (isNewRecord ? "love" : "sad") : reachedGoal ? "cool" : state === "playing" ? "determined" : "happy";
+
   return (
-    <div className="mx-auto grid max-w-4xl grid-cols-1 gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-      <Card className="p-6 text-center">
-        <h3 className="font-display text-2xl tracking-wide text-charcoal-900 dark:text-cream">COMBO PERFECTO</h3>
-        <p className="mt-1 text-sm text-charcoal-500 dark:text-charcoal-300">
-          Desliza (flechas o swipe) para combinar ingredientes iguales y armar la hamburguesa completa.
-        </p>
+    <GameLayout>
+      <GameShell
+        title="COMBO PERFECTO"
+        subtitle="Combina ingredientes iguales para subirlos de nivel. La meta: armar la Mordida completa."
+        mordi={mordiMood}
+        hud={
+          <>
+            <GameStat icon={<Target className="h-4 w-4" />} label="Puntos" value={score} />
+            <GameStat
+              icon={<TrendingUp className="h-4 w-4" />}
+              label="Nivel"
+              value={levelFor(score, 250)}
+              tone={score >= DOUBLE_SPAWN_STARTS_AT ? "ember" : "neutral"}
+            />
+            {bestScore > 0 && (
+              <GameStat icon={<Trophy className="h-4 w-4" />} label="Récord" value={bestScore} tone="gold" />
+            )}
+            <GameStat
+              icon={<topLevel.Icon className="h-4 w-4" />}
+              label="Mejor"
+              value={topLevel.label}
+              tone="ember"
+            />
+          </>
+        }
+        footer={
+          <div className="space-y-4">
+            {state === "playing" && (
+              <>
+                <p className="text-center text-xs text-charcoal-500 dark:text-charcoal-300">
+                  {reachedGoal ? (
+                    <span className="font-semibold text-ember-500">¡Armaste la Mordida completa! Sigue sumando.</span>
+                  ) : (
+                    <>
+                      Siguiente nivel: <span className="font-semibold text-ember-500">{nextLevel.label}</span>
+                    </>
+                  )}
+                </p>
+                {/* Pad en pantalla: en móvil el swipe funciona, pero un control
+                    visible evita que el jugador tenga que adivinar el gesto. */}
+                <div className="mx-auto grid w-36 grid-cols-3 grid-rows-2 gap-1.5">
+                  <DirButton className="col-start-2" onPress={() => handleMove("up")} label="Arriba">
+                    <ArrowUp className="h-4 w-4" />
+                  </DirButton>
+                  <DirButton className="col-start-1 row-start-2" onPress={() => handleMove("left")} label="Izquierda">
+                    <ArrowLeft className="h-4 w-4" />
+                  </DirButton>
+                  <DirButton className="col-start-2 row-start-2" onPress={() => handleMove("down")} label="Abajo">
+                    <ArrowDown className="h-4 w-4" />
+                  </DirButton>
+                  <DirButton className="col-start-3 row-start-2" onPress={() => handleMove("right")} label="Derecha">
+                    <ArrowRight className="h-4 w-4" />
+                  </DirButton>
+                </div>
+              </>
+            )}
 
-        <div className="mt-4 flex items-center justify-between text-sm font-semibold text-charcoal-700 dark:text-charcoal-200">
-          <span>Puntaje: {score}</span>
-          {bestScore > 0 && <span className="text-charcoal-400">Récord: {bestScore}</span>}
-        </div>
+            {state === "idle" && (
+              <Button onClick={startGame} size="lg" className="w-full">
+                Jugar
+              </Button>
+            )}
 
+            {state === "finished" && (
+              <GameResult
+                isNewRecord={isNewRecord}
+                headline={`${score} puntos`}
+                detail="¡Sin más movimientos!"
+                bestLabel={bestScore > 0 ? `Tu récord personal: ${bestScore}` : undefined}
+                savedAs={savedAs}
+                onReplay={startGame}
+              />
+            )}
+          </div>
+        }
+      >
         <div
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
-          className="relative mx-auto mt-4 grid aspect-square w-full max-w-sm touch-none grid-cols-4 gap-2 rounded-2xl bg-charcoal-100 p-2 dark:bg-charcoal-900/50"
+          className="relative mx-auto grid aspect-square w-full max-w-sm touch-none grid-cols-4 gap-2 rounded-xl p-2"
+          style={{
+            background: "linear-gradient(180deg,#3B2A1E 0%,#241812 60%,#181008 100%)",
+            boxShadow: "inset 0 2px 12px rgba(0,0,0,0.55)",
+          }}
         >
           {grid.map((row, r) =>
             row.map((cell, c) => (
-              <div
-                key={`${r}-${c}`}
-                className="relative aspect-square rounded-lg bg-charcoal-50/60 dark:bg-charcoal-800/40"
-              >
+              <div key={`${r}-${c}`} className="relative aspect-square rounded-lg bg-black/25 ring-1 ring-white/5">
                 <AnimatePresence mode="popLayout">
-                  {cell !== null && (() => {
-                    const level = LEVELS[cell] ?? FALLBACK_LEVEL;
-                    const Icon = level.Icon;
-                    return (
-                      <motion.div
-                        key={`${r}-${c}-${cell}-${pulse}`}
-                        initial={{ scale: 0.5, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.5, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 26 }}
-                        className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 shadow-md ring-1 ring-black/10"
-                        style={{ background: `linear-gradient(160deg, ${level.from}, ${level.to})` }}
-                      >
-                        <Icon className="h-2/3 w-2/3 drop-shadow-sm" />
-                      </motion.div>
-                    );
-                  })()}
+                  {cell !== null &&
+                    (() => {
+                      const level = LEVELS[cell] ?? FALLBACK_LEVEL;
+                      const Icon = level.Icon;
+                      const isTop = cell === LEVELS.length - 1;
+                      return (
+                        <motion.div
+                          key={`${r}-${c}-${cell}-${pulse}`}
+                          initial={{ scale: 0.5, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          exit={{ scale: 0.5, opacity: 0 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 26 }}
+                          className={cn(
+                            "absolute inset-0 flex flex-col items-center justify-center overflow-hidden rounded-lg p-1 shadow-md ring-1 ring-black/15",
+                            isTop && "ring-2 ring-mustard-300"
+                          )}
+                          style={{
+                            background: `linear-gradient(155deg, ${level.from} 0%, ${level.to} 100%)`,
+                            boxShadow: isTop
+                              ? "0 0 18px rgba(240,169,58,0.55), inset 0 1px 0 rgba(255,255,255,0.5)"
+                              : "inset 0 1px 0 rgba(255,255,255,0.45), 0 2px 5px rgba(0,0,0,0.3)",
+                          }}
+                        >
+                          <Icon className="h-[62%] w-[62%] drop-shadow-sm" />
+                          <span className="mt-0.5 max-w-full truncate px-0.5 text-[9px] font-bold uppercase leading-none tracking-tight text-charcoal-900/70 sm:text-[10px]">
+                            {level.label}
+                          </span>
+                        </motion.div>
+                      );
+                    })()}
                 </AnimatePresence>
               </div>
             ))
           )}
 
+          {/* Puntos ganados en la última fusión */}
+          <AnimatePresence>
+            {gainPop && (
+              <motion.span
+                key={gainPop.id}
+                initial={{ opacity: 0, y: 10, scale: 0.7 }}
+                animate={{ opacity: 1, y: -18, scale: 1.1 }}
+                exit={{ opacity: 0, y: -40 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="pointer-events-none absolute inset-x-0 top-1/2 z-20 text-center font-display text-3xl text-mustard-200 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]"
+              >
+                +{gainPop.amount}
+              </motion.span>
+            )}
+          </AnimatePresence>
+
           {state === "idle" && (
-            <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-charcoal-900/40 text-sm text-cream backdrop-blur-[1px]">
-              Presiona &quot;Jugar&quot; para empezar
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 rounded-xl bg-charcoal-900/60 text-cream backdrop-blur-[2px]">
+              <div className="h-14 w-14">
+                <MordiSprite expression="happy" glow className="h-full w-full" />
+              </div>
+              <p className="font-display text-base tracking-wide">Arma la Mordida completa</p>
+              <p className="text-[11px] text-charcoal-200">Flechas, swipe o el pad de abajo</p>
             </div>
           )}
         </div>
-
-        <div className="mt-6">
-          {state === "idle" && (
-            <Button onClick={startGame} size="lg" className="w-full">
-              Jugar
-            </Button>
-          )}
-
-          {state === "playing" && (
-            <p className="text-xs text-charcoal-400">Usa las flechas del teclado o desliza en la grilla</p>
-          )}
-
-          {state === "finished" && (
-            <div className="space-y-3">
-              <AnimatePresence mode="wait">
-                {isNewRecord ? (
-                  <motion.div
-                    key="record"
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="flex flex-col items-center gap-1"
-                  >
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-mustard-400/15 px-3 py-1 text-xs font-bold text-mustard-500">
-                      <Sparkles className="h-3.5 w-3.5" /> ¡NUEVO RÉCORD!
-                    </span>
-                    <p className="font-display text-2xl tracking-wide text-charcoal-900 dark:text-cream">
-                      {score} puntos
-                    </p>
-                  </motion.div>
-                ) : (
-                  <motion.p
-                    key="normal"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="font-display text-xl tracking-wide text-charcoal-900 dark:text-cream"
-                  >
-                    ¡Sin más movimientos! {score} puntos
-                  </motion.p>
-                )}
-              </AnimatePresence>
-
-              {!isNewRecord && bestScore > 0 && (
-                <p className="text-xs text-charcoal-400">Tu récord personal: {bestScore}</p>
-              )}
-              {!session?.user && (
-                <p className="text-xs text-charcoal-400">Inicia sesión para aparecer en la tabla de posiciones.</p>
-              )}
-
-              <Button onClick={startGame} size="lg" className="w-full">
-                Jugar de nuevo
-              </Button>
-            </div>
-          )}
-        </div>
-      </Card>
+      </GameShell>
 
       <Leaderboard game={GAME_SLUG} refreshKey={leaderboardKey} />
-    </div>
+    </GameLayout>
+  );
+}
+
+/** Botón del pad direccional en pantalla */
+function DirButton({
+  children,
+  onPress,
+  label,
+  className,
+}: {
+  children: React.ReactNode;
+  onPress: () => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      aria-label={label}
+      className={cn(
+        "flex h-10 items-center justify-center rounded-lg bg-charcoal-100 text-charcoal-600 transition-colors hover:bg-ember-500 hover:text-white active:scale-95 dark:bg-charcoal-700 dark:text-charcoal-100",
+        className
+      )}
+    >
+      {children}
+    </button>
   );
 }
