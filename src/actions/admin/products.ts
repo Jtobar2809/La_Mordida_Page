@@ -13,7 +13,27 @@ async function requireAdmin() {
   return session;
 }
 
-const extraSchema = z.object({ name: z.string().min(1), price: z.coerce.number().int().nonnegative() });
+/**
+ * Un extra puede (y debería) declarar qué insumo consume y cuánto, para que al
+ * venderlo el inventario baje solo. Los dos campos van juntos o no van: un
+ * insumo sin cantidad no permite descontar nada, y una cantidad sin insumo no
+ * apunta a ningún lado, así que se normalizan a null a la vez.
+ */
+const extraSchema = z
+  .object({
+    name: z.string().min(1),
+    price: z.coerce.number().int().nonnegative(),
+    insumoId: z.string().optional(),
+    cantidadInsumo: z.coerce.number().positive().optional(),
+  })
+  .transform(({ insumoId, cantidadInsumo, ...resto }) => {
+    const completo = Boolean(insumoId) && Boolean(cantidadInsumo);
+    return {
+      ...resto,
+      insumoId: completo ? (insumoId as string) : null,
+      cantidadInsumo: completo ? (cantidadInsumo as number) : null,
+    };
+  });
 
 // Validación para CREAR un producto: todos los campos base son obligatorios.
 const createProductSchema = z.object({
@@ -81,11 +101,35 @@ export async function upsertProduct(input: unknown): Promise<ActionResult> {
       // Los extras solo se tocan si el formulario los incluyó explícitamente.
       // Si el campo no vino en el input, los extras existentes del
       // producto quedan exactamente como estaban.
+      //
+      // Se reconcilian POR NOMBRE en vez de borrarlos y recrearlos. Antes cada
+      // guardado del producto le daba un ID nuevo a cada extra, y esos IDs son
+      // referencias vivas en dos sitios: el carrito del cliente (localStorage)
+      // y el JSON de extras de cada OrderItem. Al cambiar, el carrito de quien
+      // estaba comprando perdía en silencio sus adicionales (no se cobraban ni
+      // se descontaban), y ahora además se rompería el vínculo extra→insumo que
+      // permite descontar inventario al vender un adicional.
       if (extras !== undefined) {
-        await prisma.productExtra.deleteMany({ where: { productId: id } });
-        if (extras.length > 0) {
-          await prisma.productExtra.createMany({ data: extras.map((e) => ({ ...e, productId: id })) });
+        const existentes = await prisma.productExtra.findMany({ where: { productId: id } });
+        const porNombre = new Map(existentes.map((e) => [e.name.trim().toLowerCase(), e]));
+
+        const conservados = new Set<string>();
+        for (const extra of extras) {
+          const previo = porNombre.get(extra.name.trim().toLowerCase());
+          if (previo) {
+            conservados.add(previo.id);
+            await prisma.productExtra.update({ where: { id: previo.id }, data: extra });
+          } else {
+            const creado = await prisma.productExtra.create({ data: { ...extra, productId: id } });
+            conservados.add(creado.id);
+          }
         }
+
+        // Los que el formulario ya no incluye sí se eliminan: dejar de ofrecer
+        // un adicional es una decisión explícita del administrador.
+        await prisma.productExtra.deleteMany({
+          where: { productId: id, id: { notIn: [...conservados] } },
+        });
       }
     } else {
       // CREACIÓN: aquí el schema ya garantizó que todos los campos

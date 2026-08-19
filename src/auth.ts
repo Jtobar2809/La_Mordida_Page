@@ -5,6 +5,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { authConfig } from "@/auth.config";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -12,12 +13,10 @@ const credentialsSchema = z.object({
 });
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // La base compartida con el middleware (sesión, páginas, callback de
+  // sesión). Ver el comentario de src/auth.config.ts.
+  ...authConfig,
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-    error: "/login",
-  },
   providers: [
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -59,6 +58,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   callbacks: {
+    ...authConfig.callbacks,
     async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;

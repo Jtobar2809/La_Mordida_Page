@@ -8,7 +8,7 @@ import { Plus, Pencil, Trash2, Flame } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import { ProductForm } from "@/components/admin/product-form";
+import { ProductForm, type InsumoOpcion } from "@/components/admin/product-form";
 import { deleteProduct, toggleProductAvailability } from "@/actions/admin/products";
 import { formatCOP } from "@/lib/utils";
 import type { ProductWithExtras } from "@/types/menu";
@@ -16,7 +16,15 @@ import type { ProductWithExtras } from "@/types/menu";
 type ProductWithCategory = ProductWithExtras & { category: { name: string } };
 type Category = { id: string; name: string };
 
-export function ProductsManager({ products, categories }: { products: ProductWithCategory[]; categories: Category[] }) {
+export function ProductsManager({
+  products,
+  categories,
+  insumos,
+}: {
+  products: ProductWithCategory[];
+  categories: Category[];
+  insumos: InsumoOpcion[];
+}) {
   const router = useRouter();
   const [editing, setEditing] = React.useState<ProductWithExtras | null | undefined>(undefined);
 
@@ -103,6 +111,7 @@ export function ProductsManager({ products, categories }: { products: ProductWit
         <ProductForm
           product={editing ?? null}
           categories={categories}
+          insumos={insumos}
           onDone={() => {
             setEditing(undefined);
             router.refresh();

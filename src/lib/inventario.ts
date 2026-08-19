@@ -16,8 +16,27 @@ export function requiereDescuentoInventario(status: string) {
   return ESTADOS_QUE_DESCUENTAN.has(status);
 }
 
-async function calcularConsumoDelPedido(orderId: string) {
-  const order = await prisma.order.findUnique({
+/**
+ * Cliente de Prisma aceptado por estas funciones: o el global, o el cliente de
+ * una transacción en curso. Es lo que le permite a la caja registrar la venta,
+ * el pago y el descuento de inventario en una sola transacción atómica — antes
+ * el descuento abría su propia transacción y una venta podía quedar cobrada
+ * pero sin descontar si algo fallaba en el medio.
+ */
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
+/**
+ * Cuánto insumo consume un pedido, sumando dos fuentes:
+ *
+ *  1. La receta (BOM) de cada producto × la cantidad vendida.
+ *  2. Los extras elegidos en cada línea, vía `ProductExtra.insumoId`.
+ *
+ * Los extras se ignoraban por completo hasta ahora: se cobraban $3.000 de
+ * "extra queso" y el queso nunca salía del inventario, así que el stock
+ * teórico quedaba siempre por encima del real sin causa aparente.
+ */
+async function calcularConsumoDelPedido(db: DbClient, orderId: string) {
+  const order = await db.order.findUnique({
     where: { id: orderId },
     include: { items: { include: { product: { include: { recetaItems: true } } } } },
   });
@@ -25,14 +44,49 @@ async function calcularConsumoDelPedido(orderId: string) {
   if (!order) return null;
 
   const consumo = new Map<string, number>(); // insumoId -> cantidad total
+  const sumar = (insumoId: string, cantidad: number) =>
+    consumo.set(insumoId, (consumo.get(insumoId) ?? 0) + cantidad);
+
   for (const item of order.items) {
     for (const recetaItem of item.product.recetaItems) {
-      const cantidadTotal = recetaItem.cantidad * item.quantity;
-      consumo.set(recetaItem.insumoId, (consumo.get(recetaItem.insumoId) ?? 0) + cantidadTotal);
+      sumar(recetaItem.insumoId, recetaItem.cantidad * item.quantity);
+    }
+  }
+
+  // Los extras se guardan en OrderItem.extras como JSON congelado al momento
+  // de la venta (para que el ticket histórico no cambie si luego se edita el
+  // extra), así que de ahí solo sacamos los IDs y releemos la receta actual.
+  const extraIds = [
+    ...new Set(order.items.flatMap((item) => (Array.isArray(item.extras) ? item.extras : []).map(idDeExtra).filter(Boolean) as string[])),
+  ];
+
+  if (extraIds.length > 0) {
+    const extras = await db.productExtra.findMany({
+      where: { id: { in: extraIds }, insumoId: { not: null } },
+      select: { id: true, insumoId: true, cantidadInsumo: true },
+    });
+    const recetaPorExtra = new Map(extras.map((e) => [e.id, e]));
+
+    for (const item of order.items) {
+      const seleccionados = Array.isArray(item.extras) ? item.extras : [];
+      for (const raw of seleccionados) {
+        const receta = recetaPorExtra.get(idDeExtra(raw) ?? "");
+        if (!receta?.insumoId || !receta.cantidadInsumo) continue;
+        sumar(receta.insumoId, receta.cantidadInsumo * item.quantity);
+      }
     }
   }
 
   return { order, consumo };
+}
+
+/** Lee el `id` de un extra guardado como JSON, tolerando filas viejas o malformadas. */
+function idDeExtra(raw: unknown): string | null {
+  if (raw && typeof raw === "object" && "id" in raw) {
+    const id = (raw as { id: unknown }).id;
+    if (typeof id === "string") return id;
+  }
+  return null;
 }
 
 /**
@@ -49,33 +103,34 @@ async function calcularConsumoDelPedido(orderId: string) {
  * simplemente no descuentan nada — no es un error, es una limitación conocida
  * de esta fase.
  */
-export async function descontarInventarioPorOrden(orderId: string) {
-  const data = await calcularConsumoDelPedido(orderId);
+export async function descontarInventarioPorOrden(orderId: string, tx?: Prisma.TransactionClient) {
+  if (tx) return aplicarDescuento(tx, orderId);
+  return prisma.$transaction((t) => aplicarDescuento(t, orderId));
+}
+
+async function aplicarDescuento(db: DbClient, orderId: string) {
+  const data = await calcularConsumoDelPedido(db, orderId);
   if (!data || data.order.inventarioDescontado) return;
   const { order, consumo } = data;
 
-  const insumosInfo = await prisma.insumo.findMany({ where: { id: { in: [...consumo.keys()] } } });
+  const insumosInfo = await db.insumo.findMany({ where: { id: { in: [...consumo.keys()] } } });
   const costoPorInsumo = new Map(insumosInfo.map((i) => [i.id, i.costoUnitario]));
 
-  const operaciones: Prisma.PrismaPromise<unknown>[] = [];
   for (const [insumoId, cantidad] of consumo) {
-    operaciones.push(prisma.insumo.update({ where: { id: insumoId }, data: { stockActual: { decrement: cantidad } } }));
-    operaciones.push(
-      prisma.movimientoInsumo.create({
-        data: {
-          insumoId,
-          tipo: "SALIDA",
-          cantidad,
-          costoUnitario: costoPorInsumo.get(insumoId) ?? null,
-          motivo: `Venta automática — pedido ${order.id}`,
-          orderId: order.id,
-        },
-      })
-    );
+    await db.insumo.update({ where: { id: insumoId }, data: { stockActual: { decrement: cantidad } } });
+    await db.movimientoInsumo.create({
+      data: {
+        insumoId,
+        tipo: "SALIDA",
+        cantidad,
+        costoUnitario: costoPorInsumo.get(insumoId) ?? null,
+        motivo: `Venta automática — pedido ${order.id}`,
+        orderId: order.id,
+      },
+    });
   }
-  operaciones.push(prisma.order.update({ where: { id: orderId }, data: { inventarioDescontado: true } }));
 
-  await prisma.$transaction(operaciones);
+  await db.order.update({ where: { id: orderId }, data: { inventarioDescontado: true } });
 }
 
 /**
@@ -88,33 +143,34 @@ export async function descontarInventarioPorOrden(orderId: string) {
  * como MERMA manual desde /admin/inventario para que quede bien registrado
  * como pérdida y no como si nunca se hubiera usado.
  */
-export async function revertirInventarioPorOrden(orderId: string) {
-  const data = await calcularConsumoDelPedido(orderId);
+export async function revertirInventarioPorOrden(orderId: string, tx?: Prisma.TransactionClient) {
+  if (tx) return aplicarReversion(tx, orderId);
+  return prisma.$transaction((t) => aplicarReversion(t, orderId));
+}
+
+async function aplicarReversion(db: DbClient, orderId: string) {
+  const data = await calcularConsumoDelPedido(db, orderId);
   if (!data || !data.order.inventarioDescontado) return;
   const { order, consumo } = data;
 
-  const insumosInfo = await prisma.insumo.findMany({ where: { id: { in: [...consumo.keys()] } } });
+  const insumosInfo = await db.insumo.findMany({ where: { id: { in: [...consumo.keys()] } } });
   const costoPorInsumo = new Map(insumosInfo.map((i) => [i.id, i.costoUnitario]));
 
-  const operaciones: Prisma.PrismaPromise<unknown>[] = [];
   for (const [insumoId, cantidad] of consumo) {
-    operaciones.push(prisma.insumo.update({ where: { id: insumoId }, data: { stockActual: { increment: cantidad } } }));
-    operaciones.push(
-      prisma.movimientoInsumo.create({
-        data: {
-          insumoId,
-          tipo: "ENTRADA",
-          cantidad,
-          costoUnitario: costoPorInsumo.get(insumoId) ?? null,
-          motivo: `Reversión automática — pedido ${order.id} cancelado`,
-          orderId: order.id,
-        },
-      })
-    );
+    await db.insumo.update({ where: { id: insumoId }, data: { stockActual: { increment: cantidad } } });
+    await db.movimientoInsumo.create({
+      data: {
+        insumoId,
+        tipo: "ENTRADA",
+        cantidad,
+        costoUnitario: costoPorInsumo.get(insumoId) ?? null,
+        motivo: `Reversión automática — pedido ${order.id} cancelado`,
+        orderId: order.id,
+      },
+    });
   }
-  operaciones.push(prisma.order.update({ where: { id: orderId }, data: { inventarioDescontado: false } }));
 
-  if (operaciones.length > 0) await prisma.$transaction(operaciones);
+  await db.order.update({ where: { id: orderId }, data: { inventarioDescontado: false } });
 }
 
 /**

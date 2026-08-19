@@ -35,6 +35,55 @@ Construido con **Next.js 15 · React 19 · TypeScript · Tailwind CSS · Prisma 
   enlace en el log del servidor para no bloquear el desarrollo local.
 - SEO técnico: metadata, Open Graph (imagen generada dinámicamente), ícono de marca,
   sitemap.xml y robots.txt dinámicos.
+- **Caja (POS) con turnos y arqueo** e **inventario con descuento automático** —
+  ver el detalle en la sección 1.1.
+
+### 1.1. Caja e inventario
+
+**Caja — `/admin/caja`**
+
+Terminal de venta de mostrador con control de turnos:
+
+- **Apertura**: se declara la base en efectivo del cajón. Solo puede haber un
+  turno abierto a la vez, y eso lo garantiza un índice único en la base de datos
+  (`CajaSesion.abiertaLock`), no una comprobación en el servidor que dos clics
+  simultáneos puedan esquivar.
+- **Venta**: grilla de productos con búsqueda (Enter agrega el primer resultado),
+  extras y notas por línea, descuento manual y cobro en **efectivo, Nequi o pago
+  mixto**, con cálculo de cambio y ticket imprimible en formato térmico.
+- **Ingresos y egresos**: la plata que entra o sale sin ser una venta (pagar al
+  proveedor, un domicilio, un retiro). Sin esto todo turno con un gasto en
+  efectivo cerraría con un faltante inexplicable.
+- **Anulación**: devuelve los insumos al inventario y registra la salida del
+  dinero. El movimiento original no se borra — se corrige con el asiento
+  inverso, para que la anulación quede auditable.
+- **Cierre con arqueo**: se cuenta el efectivo físico y el sistema muestra la
+  diferencia contra lo esperado. A propósito no revela el esperado antes de que
+  se escriba lo contado: si lo hiciera, la diferencia siempre sería cero y el
+  arqueo no serviría de nada. Al cerrar, los totales quedan congelados en la
+  sesión, así que un arqueo viejo no cambia si mañana se corrige un pedido.
+- **Historial**: `/admin/caja/sesiones` lista todos los turnos con su diferencia,
+  y el detalle muestra el arqueo completo y todos los movimientos.
+
+Cada venta de caja **descuenta el inventario según receta dentro de la misma
+transacción** que registra el cobro: no puede quedar una venta cobrada sin
+descontar insumos, ni insumos descontados sin venta.
+
+**Inventario**
+
+Sobre la base existente (insumos, recetas, proveedores, compras con costo
+promedio ponderado, mermas) se cerraron dos huecos por los que el stock teórico
+se separaba del real:
+
+- **Extras que no descontaban nada.** Ahora cada `ProductExtra` puede declarar
+  qué insumo consume y cuánto (se configura al editar el producto), y la venta
+  lo descuenta igual que la receta base.
+- **Insumos elaborados que nunca consumían sus componentes.** La composición ya
+  existía en la base de datos pero nada la ejecutaba: el aderezo bajaba al
+  vender y la mayonesa que lo compone no bajaba nunca. La nueva pestaña
+  **`/admin/inventario/produccion`** registra cada tanda preparada en cocina:
+  suma stock al elaborado, descuenta sus componentes y calcula el costo real del
+  lote, promediándolo contra el stock previo.
 
 **Queda como base para la siguiente iteración (no bloquea el uso del sistema):**
 - **Pagos en línea**: el checkout está preparado para agregarlo (el prompt original

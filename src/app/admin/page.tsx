@@ -3,6 +3,7 @@ import { StatCard } from "@/components/admin/stat-card";
 import { SalesChart } from "@/components/admin/sales-chart";
 import { TopProductsChart } from "@/components/admin/top-products-chart";
 import { formatCOP } from "@/lib/utils";
+import { EXCLUIR_CLIENTE_MOSTRADOR } from "@/lib/caja";
 import { DollarSign, Users, Receipt, Stamp, TrendingUp, Gift } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export default async function AdminDashboardPage() {
       _count: true,
     }),
     prisma.order.count({ where: { createdAt: { gte: startOfMonth } } }),
-    prisma.user.count({ where: { role: "CLIENTE", createdAt: { gte: startOfMonth } } }),
+    prisma.user.count({ where: { role: "CLIENTE", createdAt: { gte: startOfMonth }, ...EXCLUIR_CLIENTE_MOSTRADOR } }),
     prisma.stampQR.count({ where: { status: "RECLAMADO" } }),
     prisma.stampCard.count({ where: { rewardReady: true } }),
     prisma.order.findMany({
@@ -44,7 +45,9 @@ export default async function AdminDashboardPage() {
       take: 5,
     }),
     prisma.user.count({
-      where: { role: "CLIENTE", orders: { some: {} } },
+      // Se excluye el cliente genérico del mostrador: agrupa cientos de ventas
+      // de personas distintas y aparecería como el cliente más frecuente.
+      where: { role: "CLIENTE", orders: { some: {} }, ...EXCLUIR_CLIENTE_MOSTRADOR },
     }),
   ]);
 

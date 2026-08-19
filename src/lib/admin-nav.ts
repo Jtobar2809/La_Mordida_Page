@@ -9,6 +9,7 @@ import {
   Percent,
   Stamp,
   Warehouse,
+  Calculator,
   type LucideIcon,
 } from "lucide-react";
 
@@ -28,6 +29,7 @@ export const adminNavLinks: AdminNavLink[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/productos", label: "Productos", icon: Beef },
   { href: "/admin/categorias", label: "Categorías", icon: Tag },
+  { href: "/admin/caja", label: "Caja", icon: Calculator },
   { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/admin/inventario", label: "Inventario", icon: Warehouse },
   { href: "/admin/clientes", label: "Clientes", icon: Users },

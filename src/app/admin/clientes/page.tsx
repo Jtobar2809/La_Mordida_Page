@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatCOP } from "@/lib/utils";
 import { buildWhatsappLink } from "@/lib/whatsapp";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
+import { EXCLUIR_CLIENTE_MOSTRADOR } from "@/lib/caja";
 import { Badge } from "@/components/ui/badge";
 import { CopyPhonesButton } from "@/components/admin/copy-phones-button";
 
@@ -125,6 +126,10 @@ const customers: CustomerWithRelations[] =
 await prisma.user.findMany({
 where: {
 role: "CLIENTE",
+// El cliente genérico del mostrador no es una persona: agrupa todas las
+// ventas de caja sin nombre y aquí solo saldría como un "VIP" fantasma
+// sin teléfono al que nunca se le puede escribir.
+...EXCLUIR_CLIENTE_MOSTRADOR,
 },
 orderBy: {
 createdAt: "desc",

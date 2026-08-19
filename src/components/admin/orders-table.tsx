@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { PackageCheck } from "lucide-react";
@@ -8,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { updateOrderStatus } from "@/actions/orders";
 import { formatCOP, formatDateTime } from "@/lib/utils";
+import { ETIQUETA_METODO } from "@/types/caja";
 
 type OrderRow = {
   id: string;
@@ -16,6 +18,8 @@ type OrderRow = {
   total: number;
   createdAt: Date;
   inventarioDescontado: boolean;
+  canal: "WEB" | "CAJA";
+  metodoPago: "EFECTIVO" | "NEQUI" | "OTRO" | null;
   user: { name: string | null; phone: string | null };
   items: { quantity: number; product: { name: string } }[];
 };
@@ -66,21 +70,42 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                 {order.items.length > 2 && ` +${order.items.length - 2} más`}
               </td>
               <td className="px-4 py-3">
-                <Badge variant="charcoal">{order.deliveryType === "DOMICILIO" ? "Domicilio" : "Recoge"}</Badge>
+                {order.canal === "CAJA" ? (
+                  <Badge variant="ember">Caja · {ETIQUETA_METODO[order.metodoPago ?? "OTRO"]}</Badge>
+                ) : (
+                  <Badge variant="charcoal">{order.deliveryType === "DOMICILIO" ? "Domicilio" : "Recoge"}</Badge>
+                )}
               </td>
               <td className="px-4 py-3 font-mono font-bold text-ember-600">{formatCOP(order.total)}</td>
               <td className="px-4 py-3">
-                <Select
-                  value={order.status}
-                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                  className="h-9 min-w-[9rem] text-xs"
-                >
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </Select>
+                {/*
+                  Una venta de mostrador nace cobrada y entregada: no tiene ciclo
+                  de vida que administrar. Se muestra fija y con un enlace a la
+                  caja, que es el único sitio donde anularla devuelve además el
+                  dinero del turno.
+                */}
+                {order.canal === "CAJA" ? (
+                  <div className="flex items-center gap-2">
+                    <Badge variant={order.status === "CANCELADO" ? "charcoal" : "olive"}>
+                      {order.status === "CANCELADO" ? "Anulada" : "Cobrada"}
+                    </Badge>
+                    <Link href="/admin/caja" className="text-xs font-medium text-ember-600 hover:underline">
+                      Ver en caja
+                    </Link>
+                  </div>
+                ) : (
+                  <Select
+                    value={order.status}
+                    onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                    className="h-9 min-w-[9rem] text-xs"
+                  >
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {s.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </Select>
+                )}
               </td>
             </tr>
           ))}

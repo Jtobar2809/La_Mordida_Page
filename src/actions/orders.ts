@@ -4,25 +4,41 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
+import { formatCOP } from "@/lib/utils";
 import { buildWhatsappOrderMessage, buildWhatsappLink } from "@/lib/whatsapp";
 import { requiereDescuentoInventario, descontarInventarioPorOrden, revertirInventarioPorOrden } from "@/lib/inventario";
+import { priceOrderItems } from "@/lib/pricing";
 import type { ActionResult } from "@/actions/auth";
 
+/**
+ * Lo que manda el carrito del navegador. Solo `productId`, `quantity`,
+ * `notes` y los IDs de extras son datos de verdad: `name`, `unitPrice` y
+ * `extras[].price` viajan porque el carrito de localStorage los guarda para
+ * pintar la UI, pero el servidor los IGNORA por completo y vuelve a leer
+ * nombre y precio desde la base de datos (ver `priceOrderItems`).
+ *
+ * Es la misma regla que ya aplicaba `createManualOrder`: nunca confiar en un
+ * precio que viene del cliente. Sin esto, editar `la-mordida-cart` en
+ * localStorage permitía confirmar un pedido a $0 — y el mensaje que le llega
+ * al restaurante por WhatsApp mostraba ese total manipulado como legítimo.
+ */
 const cartItemSchema = z.object({
   productId: z.string(),
-  name: z.string(),
-  quantity: z.number().int().positive(),
-  unitPrice: z.number().int().nonnegative(),
-  notes: z.string().optional(),
-  extras: z.array(z.object({ id: z.string(), name: z.string(), price: z.number() })).default([]),
+  name: z.string().optional(),
+  quantity: z.number().int().positive().max(50, "Cantidad máxima por producto: 50"),
+  unitPrice: z.number().optional(),
+  notes: z.string().max(300).optional(),
+  extras: z
+    .array(z.object({ id: z.string(), name: z.string().optional(), price: z.number().optional() }))
+    .default([]),
 });
 
 const createOrderSchema = z.object({
   items: z.array(cartItemSchema).min(1, "Tu carrito está vacío"),
   deliveryType: z.enum(["DOMICILIO", "RECOGE_EN_TIENDA"]),
-  address: z.string().optional(),
-  notes: z.string().optional(),
-  couponCode: z.string().optional(),
+  address: z.string().max(300).optional(),
+  notes: z.string().max(500).optional(),
+  couponCode: z.string().max(40).optional(),
 });
 
 export async function createOrder(
@@ -42,23 +58,60 @@ export async function createOrder(
 
   const settings = await getSettings();
 
-  const subtotal = items.reduce((sum, item) => {
-    const extrasTotal = item.extras.reduce((s, e) => s + e.price, 0);
-    return sum + (item.unitPrice + extrasTotal) * item.quantity;
-  }, 0);
+  // Precios reales desde la base de datos: lo que mandó el navegador solo
+  // sirve para saber QUÉ se pidió, nunca CUÁNTO cuesta.
+  const pricing = await priceOrderItems(
+    items.map((i) => ({
+      productId: i.productId,
+      quantity: i.quantity,
+      extraIds: i.extras.map((e) => e.id),
+      notes: i.notes,
+    })),
+    { requireAvailable: true }
+  );
+  if (!pricing.ok) return { success: false, error: pricing.error };
 
+  const { items: pricedItems, subtotal } = pricing;
+
+  // Un cupón que no aplica ya no se ignora en silencio: antes el pedido salía
+  // igual a precio completo y el cliente creía haber usado su descuento.
   let discount = 0;
-  if (couponCode) {
-    const coupon = await prisma.coupon.findUnique({ where: { code: couponCode.toUpperCase() } });
-    if (coupon && coupon.active && subtotal >= coupon.minOrder) {
-      const notExpired = !coupon.expiresAt || coupon.expiresAt > new Date();
-      const hasUses = !coupon.usageLimit || coupon.used < coupon.usageLimit;
-      if (notExpired && hasUses) {
-        discount = coupon.discountType === "PORCENTAJE" ? Math.floor((subtotal * coupon.value) / 100) : coupon.value;
-        discount = Math.min(discount, subtotal);
-        await prisma.coupon.update({ where: { id: coupon.id }, data: { used: { increment: 1 } } });
-      }
+  let appliedCoupon: string | null = null;
+  const normalizedCoupon = couponCode?.trim().toUpperCase();
+
+  if (normalizedCoupon) {
+    const coupon = await prisma.coupon.findUnique({ where: { code: normalizedCoupon } });
+
+    if (!coupon || !coupon.active) {
+      return { success: false, error: "Ese cupón no existe o ya no está activo." };
     }
+    if (coupon.expiresAt && coupon.expiresAt <= new Date()) {
+      return { success: false, error: "Ese cupón ya venció." };
+    }
+    if (subtotal < coupon.minOrder) {
+      return {
+        success: false,
+        error: `Este cupón aplica desde ${formatCOP(coupon.minOrder)} de compra. Te faltan ${formatCOP(coupon.minOrder - subtotal)}.`,
+      };
+    }
+
+    // Reserva atómica del uso: la condición `used < usageLimit` la evalúa
+    // Postgres en el WHERE de la propia escritura, así que dos pedidos
+    // simultáneos por el último uso no pueden ganar los dos (antes sí:
+    // ambos leían `used` antes de que cualquiera escribiera).
+    const usageGuard = coupon.usageLimit === null ? {} : { used: { lt: coupon.usageLimit } };
+    const claimed = await prisma.coupon.updateMany({
+      where: { id: coupon.id, active: true, ...usageGuard },
+      data: { used: { increment: 1 } },
+    });
+    if (claimed.count === 0) {
+      return { success: false, error: "Este cupón ya alcanzó su límite de usos." };
+    }
+
+    discount =
+      coupon.discountType === "PORCENTAJE" ? Math.floor((subtotal * coupon.value) / 100) : coupon.value;
+    discount = Math.min(discount, subtotal);
+    appliedCoupon = coupon.code;
   }
 
   const deliveryFee = deliveryType === "DOMICILIO" ? Number(settings.deliveryFee) : 0;
@@ -77,10 +130,10 @@ export async function createOrder(
       tax,
       discount,
       total,
-      couponCode: discount > 0 ? couponCode?.toUpperCase() : null,
+      couponCode: appliedCoupon,
       pointsEarned: 0,
       items: {
-        create: items.map((item) => ({
+        create: pricedItems.map((item) => ({
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -95,7 +148,13 @@ export async function createOrder(
   const message = buildWhatsappOrderMessage({
     orderId: order.id,
     customerName: order.user.name ?? "Cliente",
-    items: items.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.unitPrice, notes: i.notes, extras: i.extras })),
+    items: pricedItems.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      notes: i.notes,
+      extras: i.extras,
+    })),
     subtotal,
     deliveryFee,
     discount,
@@ -164,38 +223,13 @@ export async function createManualOrder(input: unknown): Promise<ActionResult<{ 
     });
   }
 
-  // Precios reales desde la base de datos: nunca confiar en lo que mande el cliente.
-  const products = await prisma.product.findMany({
-    where: { id: { in: items.map((i) => i.productId) } },
-    include: { extras: true },
-  });
-  const productMap = new Map(products.map((p) => [p.id, p]));
+  // Precios reales desde la base de datos, con el mismo valorador que usa el
+  // checkout público. `requireAvailable: false` porque una venta de mostrador
+  // puede ser de algo que se acaba de marcar como agotado en la web.
+  const pricing = await priceOrderItems(items, { requireAvailable: false });
+  if (!pricing.ok) return { success: false, error: pricing.error };
 
-  let subtotal = 0;
-  const orderItemsData: {
-    productId: string;
-    quantity: number;
-    unitPrice: number;
-    notes: string | undefined;
-    extras: { id: string; name: string; price: number }[];
-  }[] = [];
-
-  for (const item of items) {
-    const product = productMap.get(item.productId);
-    if (!product) return { success: false, error: "Uno de los productos seleccionados ya no existe." };
-
-    const selectedExtras = product.extras.filter((e) => item.extraIds.includes(e.id));
-    const extrasTotal = selectedExtras.reduce((s, e) => s + e.price, 0);
-    subtotal += (product.price + extrasTotal) * item.quantity;
-
-    orderItemsData.push({
-      productId: product.id,
-      quantity: item.quantity,
-      unitPrice: product.price,
-      notes: item.notes,
-      extras: selectedExtras.map((e) => ({ id: e.id, name: e.name, price: e.price })),
-    });
-  }
+  const { items: orderItemsData, subtotal } = pricing;
 
   const settings = await getSettings();
   const deliveryFee = deliveryType === "DOMICILIO" ? Number(settings.deliveryFee) : 0;
@@ -217,7 +251,15 @@ export async function createManualOrder(input: unknown): Promise<ActionResult<{ 
       total,
       pointsEarned: 0,
       whatsappSent: false,
-      items: { create: orderItemsData },
+      items: {
+        create: orderItemsData.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          notes: item.notes,
+          extras: item.extras,
+        })),
+      },
     },
   });
 
@@ -236,6 +278,16 @@ export async function updateOrderStatus(orderId: string, status: string): Promis
 
   const parsed = orderStatusSchema.safeParse(status);
   if (!parsed.success) return { success: false, error: "Estado inválido" };
+
+  // Una venta de mostrador no tiene ciclo de vida: nace cobrada y entregada.
+  // Cancelarla desde aquí devolvería los insumos al inventario pero dejaría la
+  // plata registrada en el turno, y la caja cerraría con un sobrante fantasma.
+  // Anularla desde /admin/caja hace las dos cosas a la vez.
+  const orden = await prisma.order.findUnique({ where: { id: orderId }, select: { canal: true } });
+  if (!orden) return { success: false, error: "Ese pedido ya no existe." };
+  if (orden.canal === "CAJA") {
+    return { success: false, error: "Es una venta de caja. Anúlala desde /admin/caja para que también se devuelva el dinero del turno." };
+  }
 
   await prisma.order.update({
     where: { id: orderId },

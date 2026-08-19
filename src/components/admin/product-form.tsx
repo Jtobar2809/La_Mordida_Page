@@ -48,13 +48,46 @@ type BaseField = (typeof BASE_FIELDS)[number];
  * Al CREAR (product === null) se envían siempre todos los campos, ya
  * que no hay "valor actual" que preservar.
  */
+export type InsumoOpcion = { id: string; nombre: string; unidad: string };
+
+/**
+ * Convierte los extras del formulario al formato que espera el server action:
+ * descarta los que no tienen nombre y omite la receta cuando está incompleta,
+ * para que un extra a medio configurar se guarde como "no descuenta" en vez de
+ * hacer fallar todo el guardado del producto.
+ */
+function extrasParaEnviar(extras: ExtraEditable[]) {
+  return extras
+    .filter((extra) => extra.name.trim().length > 0)
+    .map((extra) => {
+      const cantidad = Number(extra.cantidadInsumo);
+      const tieneReceta = extra.insumoId !== "" && Number.isFinite(cantidad) && cantidad > 0;
+      return {
+        name: extra.name.trim(),
+        price: extra.price,
+        insumoId: tieneReceta ? extra.insumoId : undefined,
+        cantidadInsumo: tieneReceta ? cantidad : undefined,
+      };
+    });
+}
+
+/** Un extra tal como se edita en el formulario, con su receta opcional. */
+type ExtraEditable = {
+  name: string;
+  price: number;
+  insumoId: string;
+  cantidadInsumo: string;
+};
+
 export function ProductForm({
   product,
   categories,
+  insumos,
   onDone,
 }: {
   product: ProductWithExtras | null;
   categories: Category[];
+  insumos: InsumoOpcion[];
   onDone: () => void;
 }) {
   const isEditing = product !== null;
@@ -71,7 +104,14 @@ export function ProductForm({
   });
   const [ingredients, setIngredients] = React.useState<string[]>(product?.ingredients ?? []);
   const [ingredientInput, setIngredientInput] = React.useState("");
-  const [extras, setExtras] = React.useState(product?.extras.map((e) => ({ name: e.name, price: e.price })) ?? []);
+  const [extras, setExtras] = React.useState<ExtraEditable[]>(
+    product?.extras.map((e) => ({
+      name: e.name,
+      price: e.price,
+      insumoId: e.insumoId ?? "",
+      cantidadInsumo: e.cantidadInsumo === null ? "" : String(e.cantidadInsumo),
+    })) ?? []
+  );
   const [loading, setLoading] = React.useState(false);
 
   // Campos que el usuario modificó realmente durante esta edición.
@@ -99,9 +139,9 @@ export function ProductForm({
 
   const addExtra = () => {
     extrasDirty.current = true;
-    setExtras((prev) => [...prev, { name: "", price: 0 }]);
+    setExtras((prev) => [...prev, { name: "", price: 0, insumoId: "", cantidadInsumo: "" }]);
   };
-  const updateExtra = (idx: number, patch: Partial<{ name: string; price: number }>) => {
+  const updateExtra = (idx: number, patch: Partial<ExtraEditable>) => {
     extrasDirty.current = true;
     setExtras((prev) => prev.map((ex, i) => (i === idx ? { ...ex, ...patch } : ex)));
   };
@@ -123,12 +163,12 @@ export function ProductForm({
         payload[key] = form[key];
       }
       if (ingredientsDirty.current) payload.ingredients = ingredients;
-      if (extrasDirty.current) payload.extras = extras.filter((ex) => ex.name.trim().length > 0);
+      if (extrasDirty.current) payload.extras = extrasParaEnviar(extras);
     } else {
       payload = {
         ...form,
         ingredients,
-        extras: extras.filter((ex) => ex.name.trim().length > 0),
+        extras: extrasParaEnviar(extras),
       };
     }
 
@@ -238,26 +278,66 @@ export function ProductForm({
             <Plus className="h-3.5 w-3.5" /> Agregar extra
           </Button>
         </div>
-        <div className="space-y-2">
-          {extras.map((extra, i) => (
-            <div key={i} className="flex gap-2">
-              <Input
-                placeholder="Nombre del extra"
-                value={extra.name}
-                onChange={(e) => updateExtra(i, { name: e.target.value })}
-              />
-              <Input
-                type="number"
-                placeholder="Precio"
-                className="w-28"
-                value={extra.price}
-                onChange={(e) => updateExtra(i, { price: Number(e.target.value) })}
-              />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeExtra(i)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+
+        {extras.length > 0 && (
+          <p className="mb-2 text-xs text-charcoal-400">
+            Indica qué insumo consume cada extra para que la venta lo descuente del inventario. Si lo dejas vacío, el
+            extra se cobra pero no descuenta nada.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {extras.map((extra, i) => {
+            const insumo = insumos.find((ins) => ins.id === extra.insumoId);
+            return (
+              <div key={i} className="rounded-xl border border-charcoal-100 p-3 dark:border-charcoal-700">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nombre del extra"
+                    value={extra.name}
+                    onChange={(e) => updateExtra(i, { name: e.target.value })}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Precio"
+                    className="w-28"
+                    value={extra.price}
+                    onChange={(e) => updateExtra(i, { price: Number(e.target.value) })}
+                  />
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removeExtra(i)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-2 flex gap-2">
+                  <Select
+                    value={extra.insumoId}
+                    onChange={(e) => updateExtra(i, { insumoId: e.target.value })}
+                    className="h-9 text-sm"
+                    aria-label={`Insumo que consume ${extra.name || "el extra"}`}
+                  >
+                    <option value="">Sin insumo (no descuenta)</option>
+                    {insumos.map((ins) => (
+                      <option key={ins.id} value={ins.id}>
+                        {ins.nombre}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    type="number"
+                    step="any"
+                    min={0}
+                    placeholder={insumo ? insumo.unidad.toLowerCase() : "cantidad"}
+                    className="h-9 w-36 text-sm"
+                    value={extra.cantidadInsumo}
+                    onChange={(e) => updateExtra(i, { cantidadInsumo: e.target.value })}
+                    disabled={!extra.insumoId}
+                    aria-label={`Cantidad de insumo por ${extra.name || "extra"}`}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

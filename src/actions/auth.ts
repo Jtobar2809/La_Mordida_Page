@@ -12,7 +12,19 @@ const registerSchema = z.object({
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
 
-export type ActionResult<T = undefined> = { success: true; data?: T } | { success: false; error: string };
+/**
+ * Resultado estándar de un server action.
+ *
+ * `data` es OBLIGATORIO cuando la acción declara un tipo de retorno, y solo
+ * opcional en las acciones que no devuelven nada (`ActionResult` a secas).
+ * Antes era siempre opcional, así que el compilador obligaba a cada consumidor
+ * a tratar `resultado.data` como posiblemente `undefined` incluso después de
+ * comprobar `success`, y la salida cómoda era el `!` — que apaga justo la
+ * comprobación que uno quiere tener cuando maneja plata.
+ */
+export type ActionResult<T = undefined> =
+  | ([T] extends [undefined] ? { success: true; data?: T } : { success: true; data: T })
+  | { success: false; error: string };
 
 export async function registerUser(input: unknown): Promise<ActionResult> {
   const parsed = registerSchema.safeParse(input);

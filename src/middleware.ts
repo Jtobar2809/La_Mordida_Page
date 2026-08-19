@@ -1,26 +1,26 @@
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { authConfig } from "@/auth.config";
 
-const SECURITY_HEADERS: Record<string, string> = {
-  "X-Frame-Options": "DENY",
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "X-XSS-Protection": "0",
-  "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
-  // A conservative CSP — ajustar según CDN/terceros si es necesario
-  "Content-Security-Policy": "default-src 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; connect-src 'self' https:;",
-};
-
-function withSecurityHeaders(res: NextResponse) {
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-    try {
-      res.headers.set(k, v);
-    } catch (e) {
-      // ignore header set failures in some envs
-    }
-  }
-  return res;
-}
+/**
+ * Primera capa de autorización: redirige antes de renderizar.
+ *
+ * Dos cosas cambiaron respecto a la versión anterior:
+ *
+ *  1. Ya no importa `@/auth` sino `@/auth.config`. El middleware solo necesita
+ *     decodificar el JWT, no consultar la base de datos, así que no tiene por
+ *     qué arrastrar PrismaAdapter/@prisma/client/bcrypt a su bundle (eran
+ *     239 kB cargándose en cada petición a /admin y /cuenta).
+ *
+ *  2. Ya no aplica las cabeceras de seguridad a mano. Al vivir aquí, solo
+ *     protegían las dos rutas del `matcher` — la home, el menú, /login y
+ *     /registro se servían sin CSP ni X-Frame-Options. Ahora se declaran en
+ *     `next.config.mjs` y cubren todas las respuestas del sitio.
+ *
+ * Esta sigue siendo la PRIMERA capa, no la única: los layouts de /admin y
+ * /cuenta vuelven a comprobar la sesión en el servidor (src/lib/guards.ts).
+ */
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const { nextUrl } = req;
@@ -32,21 +32,22 @@ export default auth((req) => {
 
   if (isAdminRoute) {
     if (!isLoggedIn) {
-      const r = NextResponse.redirect(new URL(`/login?callbackUrl=${nextUrl.pathname}`, nextUrl));
-      return withSecurityHeaders(r);
+      return NextResponse.redirect(
+        new URL(`/login?callbackUrl=${encodeURIComponent(nextUrl.pathname)}`, nextUrl)
+      );
     }
     if (role !== "ADMIN") {
-      const r = NextResponse.redirect(new URL("/", nextUrl));
-      return withSecurityHeaders(r);
+      return NextResponse.redirect(new URL("/", nextUrl));
     }
   }
 
   if (isAccountRoute && !isLoggedIn) {
-    const r = NextResponse.redirect(new URL(`/login?callbackUrl=${nextUrl.pathname}`, nextUrl));
-    return withSecurityHeaders(r);
+    return NextResponse.redirect(
+      new URL(`/login?callbackUrl=${encodeURIComponent(nextUrl.pathname)}`, nextUrl)
+    );
   }
 
-  return withSecurityHeaders(NextResponse.next());
+  return NextResponse.next();
 });
 
 export const config = {

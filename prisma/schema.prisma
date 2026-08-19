@@ -36,6 +36,8 @@ model User {
   claimedStamps      StampQR[]           @relation("StampClaimer")
   generatedStamps    StampQR[]           @relation("StampGenerator")
   level              Level?              @relation(fields: [levelId], references: [id])
+  cajasAbiertas      CajaSesion[]        @relation("CajaAbiertaPor")
+  cajasCerradas      CajaSesion[]        @relation("CajaCerradaPor")
 
   @@index([role])
 }
@@ -144,7 +146,19 @@ model ProductExtra {
   active    Boolean @default(true)
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  // Receta del extra. Un adicional casi siempre es "más de un solo insumo"
+  // (extra queso = 30g de queso, extra tocineta = 25g de tocineta), así que no
+  // hace falta una tabla de receta aparte: basta con apuntar al insumo y decir
+  // cuánto consume. Sin esto, los extras se cobraban pero NO descontaban nada
+  // del inventario, y el queso "desaparecía" sin explicación en el arqueo.
+  // Ambos campos son opcionales: un extra sin insumo asociado (ej. "sin
+  // cebolla", "término tres cuartos") simplemente no descuenta.
+  insumoId       String?
+  cantidadInsumo Float?
+  insumo         Insumo? @relation(fields: [insumoId], references: [id], onDelete: SetNull)
+
   @@index([productId])
+  @@index([insumoId])
 }
 
 model Insumo {
@@ -167,6 +181,8 @@ model Insumo {
   proveedorPrincipal   Proveedor?         @relation(fields: [proveedorPrincipalId], references: [id])
   composicion          InsumoComponente[] @relation("Composicion")
   usadoComoBaseEn      InsumoComponente[] @relation("UsadoComoBase")
+  extras               ProductExtra[]
+  producciones         Produccion[]
 
   @@index([activo])
   @@index([proveedorPrincipalId])
@@ -208,6 +224,30 @@ model InsumoComponente {
   @@index([insumoBaseId])
 }
 
+// Un lote preparado de un insumo elaborado (una olla de aderezo, una tanda de
+// cebolla caramelizada). Es la pieza que le faltaba a `InsumoComponente`:
+// antes existía la "receta interna" de los elaborados pero nada la ejecutaba,
+// así que vender una hamburguesa descontaba 30g de aderezo del stock del
+// aderezo... y la mayonesa, la mostaza y los pepinillos que lo componen se
+// quedaban intactos en el sistema para siempre. Registrar una Producción cierra
+// ese hueco: suma stock al elaborado y descuenta sus componentes, todo en la
+// misma transacción y todo trazado en MovimientoInsumo.
+model Produccion {
+  id                String   @id @default(cuid())
+  insumoElaboradoId String
+  cantidad          Float
+  // Costo unitario del elaborado calculado a partir de lo que costaron sus
+  // componentes en ESTE lote, no de una tabla de precios teórica.
+  costoUnitario     Int      @default(0)
+  notas             String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  insumoElaborado   Insumo   @relation(fields: [insumoElaboradoId], references: [id], onDelete: Restrict)
+
+  @@index([insumoElaboradoId])
+  @@index([createdAt])
+}
+
 // Libro mayor de inventario: toda entrada, salida, merma o ajuste queda trazada aquí.
 model MovimientoInsumo {
   id            String         @id @default(cuid())
@@ -217,6 +257,7 @@ model MovimientoInsumo {
   costoUnitario Int?
   motivo        String?
   orderId       String?
+  produccionId  String?
   createdById   String?
   createdAt     DateTime       @default(now())
   insumo        Insumo         @relation(fields: [insumoId], references: [id], onDelete: Cascade)
@@ -225,20 +266,21 @@ model MovimientoInsumo {
   @@index([tipo])
   @@index([createdAt])
   @@index([orderId])
+  @@index([produccionId])
 }
 
 // Fase 3: proveedores y compras. Registrar una Compra descuenta... perdón,
 // SUMA stock (ENTRADA) y recalcula el costo promedio ponderado del insumo,
 // reutilizando el mismo libro mayor MovimientoInsumo de la Fase 1.
 model Proveedor {
-  id        String    @id @default(cuid())
-  nombre    String    @unique
+  id        String   @id @default(cuid())
+  nombre    String   @unique
   contacto  String?
   telefono  String?
   email     String?
-  activo    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   insumos   Insumo[]
   compras   Compra[]
 
@@ -273,31 +315,131 @@ model CompraItem {
   @@index([insumoId])
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CAJA
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Un turno de caja: se abre con una base en efectivo, acumula ventas,
+/// ingresos y egresos, y se cierra contando la plata física (arqueo).
+///
+/// Los totales NO se guardan mientras la caja está abierta — se calculan al
+/// vuelo sumando los movimientos, que son la única fuente de verdad. Solo al
+/// cerrar se congela un snapshot (`totalVentas`, `esperadoEfectivo`, etc.) para
+/// que el arqueo histórico de un turno del mes pasado siga mostrando los mismos
+/// números aunque después se corrija un pedido viejo.
+model CajaSesion {
+  id     String     @id @default(cuid())
+  codigo String     @unique
+  estado CajaEstado @default(ABIERTA)
+
+  /// Base en efectivo con la que arranca el turno (para dar vueltas).
+  montoInicial  Int      @default(0)
+  abiertaPorId  String
+  abiertaAt     DateTime @default(now())
+  notasApertura String?
+
+  cerradaPorId    String?
+  cerradaAt       DateTime?
+  notasCierre     String?
+  /// Efectivo físico contado por quien cierra. Null mientras esté abierta.
+  efectivoContado Int?
+
+  // Snapshot congelado al cerrar (todos null mientras la caja está abierta).
+  totalVentas      Int?
+  totalEfectivo    Int?
+  totalNequi       Int?
+  totalOtros       Int?
+  totalIngresos    Int?
+  totalEgresos     Int?
+  /// montoInicial + efectivo de ventas + ingresos − egresos.
+  esperadoEfectivo Int?
+  /// efectivoContado − esperadoEfectivo. Negativo = falta plata.
+  diferencia       Int?
+
+  /// Truco de integridad: en Postgres cada NULL de un índice único cuenta como
+  /// un valor distinto, así que este campo vale `true` mientras el turno está
+  /// abierto y pasa a `null` al cerrarlo. Resultado: es la BASE DE DATOS la que
+  /// garantiza que nunca existan dos cajas abiertas a la vez, no un `if` en el
+  /// servidor que dos clics simultáneos pueden esquivar.
+  abiertaLock Boolean? @unique
+
+  abiertaPor  User             @relation("CajaAbiertaPor", fields: [abiertaPorId], references: [id])
+  cerradaPor  User?            @relation("CajaCerradaPor", fields: [cerradaPorId], references: [id])
+  movimientos MovimientoCaja[]
+  ordenes     Order[]
+
+  @@index([estado])
+  @@index([abiertaAt])
+}
+
+/// Cada entrada y salida de plata del turno. Una venta con pago mixto genera
+/// varias filas (una por método), por eso el monto vive aquí y no en Order.
+model MovimientoCaja {
+  id          String             @id @default(cuid())
+  sesionId    String
+  tipo        MovimientoCajaTipo
+  metodo      MetodoPago
+  /// Siempre positivo. El signo lo define `tipo` (EGRESO resta), para que no
+  /// existan dos representaciones de la misma salida de dinero.
+  monto       Int
+  concepto    String
+  orderId     String?
+  createdById String?
+  createdAt   DateTime           @default(now())
+
+  sesion CajaSesion @relation(fields: [sesionId], references: [id], onDelete: Cascade)
+  order  Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([sesionId])
+  @@index([tipo])
+  @@index([orderId])
+  @@index([createdAt])
+}
+
 model Order {
-  id                 String              @id @default(cuid())
-  userId             String
-  status             OrderStatus         @default(PENDIENTE)
-  deliveryType       DeliveryType        @default(DOMICILIO)
-  address            String?
-  notes              String?
-  subtotal           Int
-  deliveryFee        Int                 @default(0)
-  tax                Int                 @default(0)
-  discount           Int                 @default(0)
-  total              Int
-  couponCode         String?
-  pointsEarned       Int                 @default(0)
-  whatsappSent       Boolean             @default(false)
-  inventarioDescontado Boolean           @default(false)
+  id                   String       @id @default(cuid())
+  userId               String
+  status               OrderStatus  @default(PENDIENTE)
+  deliveryType         DeliveryType @default(DOMICILIO)
+  address              String?
+  notes                String?
+  subtotal             Int
+  deliveryFee          Int          @default(0)
+  tax                  Int          @default(0)
+  discount             Int          @default(0)
+  total                Int
+  couponCode           String?
+  pointsEarned         Int          @default(0)
+  whatsappSent         Boolean      @default(false)
+  inventarioDescontado Boolean      @default(false)
+
+  /// De dónde vino la venta. WEB = checkout del cliente, CAJA = mostrador.
+  /// Sin esto el reporte de caja no puede distinguir la plata que realmente
+  /// entró al cajón de los pedidos que se pagan contra entrega en la calle.
+  canal            OrderCanal  @default(WEB)
+  cajaSesionId     String?
+  /// Método principal de pago. El desglose real vive en MovimientoCaja (una
+  /// venta puede pagarse parte en efectivo y parte por Nequi); este campo es
+  /// el atajo para listar y filtrar pedidos sin hacer un join.
+  metodoPago       MetodoPago?
+  /// Solo para pagos en efectivo: cuánto entregó el cliente y cuánto se le
+  /// devolvió. Se guarda para que el ticket sea reimprimible tal cual.
+  efectivoRecibido Int?
+  cambio           Int?
+
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   user               User                @relation(fields: [userId], references: [id])
   items              OrderItem[]
   pointsTransactions PointsTransaction[]
+  cajaSesion         CajaSesion?         @relation(fields: [cajaSesionId], references: [id], onDelete: SetNull)
+  movimientosCaja    MovimientoCaja[]
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([canal])
+  @@index([cajaSesionId])
 }
 
 model OrderItem {
@@ -441,15 +583,15 @@ model Coupon {
 }
 
 model Banner {
-  id        String        @id @default(cuid())
+  id        String          @id @default(cuid())
   title     String
   subtitle  String?
   image     String
   link      String?
-  order     Int           @default(0)
-  active    Boolean       @default(true)
+  order     Int             @default(0)
+  active    Boolean         @default(true)
   placement BannerPlacement @default(PROMOCIONES)
-  createdAt DateTime      @default(now())
+  createdAt DateTime        @default(now())
 
   @@index([order])
   @@index([placement])
@@ -616,4 +758,36 @@ enum MovimientoTipo {
   SALIDA
   AJUSTE
   MERMA
+  /// Entrada de un insumo elaborado que se preparó en cocina. Se separa de
+  /// ENTRADA a propósito: una ENTRADA es plata que salió a comprarle a un
+  /// proveedor, una PRODUCCION no compra nada, solo transforma insumos que ya
+  /// estaban en la bodega. Mezclarlos inflaría el costo de compras del mes.
+  PRODUCCION
+}
+
+enum CajaEstado {
+  ABIERTA
+  CERRADA
+}
+
+enum MovimientoCajaTipo {
+  VENTA
+  /// Plata que entra por fuera de una venta (base adicional, cobro pendiente).
+  INGRESO
+  /// Plata que sale: pago a proveedor, domicilio, retiro a la caja fuerte.
+  EGRESO
+}
+
+/// Solo los métodos que realmente se reciben hoy. Agregar TARJETA o
+/// TRANSFERENCIA más adelante es una línea aquí más una migración trivial;
+/// definirlos antes de tenerlos solo llena la UI de opciones muertas.
+enum MetodoPago {
+  EFECTIVO
+  NEQUI
+  OTRO
+}
+
+enum OrderCanal {
+  WEB
+  CAJA
 }

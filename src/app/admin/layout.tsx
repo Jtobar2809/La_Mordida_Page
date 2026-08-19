@@ -1,7 +1,12 @@
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { AdminTopbar } from "@/components/admin/admin-topbar";
+import { requireAdminPage } from "@/lib/guards";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Segunda capa de autorización, independiente del middleware. Ver el
+  // comentario de `requireAdminPage` en src/lib/guards.ts.
+  await requireAdminPage();
+
   return (
     <div className="flex min-h-screen bg-charcoal-50 dark:bg-charcoal-900/40">
       <AdminSidebar />
