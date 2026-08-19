@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/actions/auth";
+import { redondearCosto, referenciaDesdeCosto } from "@/lib/costos";
 
 async function requireAdmin() {
   const session = await auth();
@@ -41,13 +42,14 @@ async function creariaCiclo(insumoElaboradoId: string, insumoBaseId: string): Pr
 }
 
 /**
- * Costo de un insumo, resuelto recursivamente si es elaborado: en vez de
- * confiar en el costoUnitario guardado (que puede estar desactualizado si no
- * le diste "Usar como costo del insumo" después de tocar su composición),
- * lo recalcula sumando cantidad × costo de cada componente, bajando tantos
- * niveles como haga falta. `enProceso` protege contra un ciclo inesperado en
- * datos ya existentes (no debería pasar gracias a creariaCiclo, pero si pasa,
- * cortamos en vez de colgar la función).
+ * Costo de UNA unidad de un insumo, resuelto recursivamente si es elaborado: en
+ * vez de confiar en el costoUnitario guardado (que puede estar desactualizado si
+ * no le diste "Usar como costo del insumo" después de tocar su composición), lo
+ * recalcula sumando cantidad × costo de cada componente de la tanda y dividiendo
+ * por el rendimiento de esa tanda, bajando tantos niveles como haga falta.
+ * `enProceso` protege contra un ciclo inesperado en datos ya existentes (no
+ * debería pasar gracias a creariaCiclo, pero si pasa, cortamos en vez de colgar
+ * la función).
  */
 async function calcularCostoInsumo(
   insumoId: string,
@@ -58,7 +60,10 @@ async function calcularCostoInsumo(
   if (enProceso.has(insumoId)) return 0;
   enProceso.add(insumoId);
 
-  const insumo = await prisma.insumo.findUnique({ where: { id: insumoId }, select: { costoUnitario: true, esElaborado: true } });
+  const insumo = await prisma.insumo.findUnique({
+    where: { id: insumoId },
+    select: { costoUnitario: true, esElaborado: true, rendimiento: true },
+  });
   if (!insumo) {
     enProceso.delete(insumoId);
     return 0;
@@ -82,15 +87,18 @@ async function calcularCostoInsumo(
     return insumo.costoUnitario;
   }
 
+  // `total` es lo que cuesta la tanda completa; dividirlo por el rendimiento da
+  // el costo de 1 unidad, que es lo que multiplican las recetas.
   let total = 0;
   for (const c of componentes) {
     total += c.cantidad * (await calcularCostoInsumo(c.insumoBaseId, cache, enProceso));
   }
 
-  const redondeado = Math.round(total);
+  const rinde = insumo.rendimiento > 0 ? insumo.rendimiento : 1;
+  const porUnidad = redondearCosto(total / rinde);
   enProceso.delete(insumoId);
-  cache.set(insumoId, redondeado);
-  return redondeado;
+  cache.set(insumoId, porUnidad);
+  return porUnidad;
 }
 
 const componenteSchema = z.object({
@@ -134,6 +142,37 @@ export async function upsertComponente(input: unknown): Promise<ActionResult> {
   }
 
   revalidatePath("/admin/inventario");
+  revalidatePath("/admin/inventario/produccion");
+  return { success: true };
+}
+
+const rendimientoSchema = z.object({
+  insumoId: z.string().min(1),
+  rendimiento: z.coerce.number().positive("El rendimiento debe ser mayor a 0"),
+});
+
+/**
+ * Cuánto sale de una tanda de la composición (ej. la olla de aderezo rinde
+ * 700 g). Es lo que permite anotar los pesos reales de cada componente en vez
+ * de fracciones "por cada 1 unidad".
+ */
+export async function actualizarRendimiento(input: unknown): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = rendimientoSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  await prisma.insumo.update({
+    where: { id: parsed.data.insumoId },
+    data: { rendimiento: parsed.data.rendimiento },
+  });
+
+  revalidatePath("/admin/inventario");
+  revalidatePath("/admin/inventario/produccion");
   return { success: true };
 }
 
@@ -146,15 +185,18 @@ export async function deleteComponente(id: string): Promise<ActionResult> {
 
   await prisma.insumoComponente.delete({ where: { id } });
   revalidatePath("/admin/inventario");
+  revalidatePath("/admin/inventario/produccion");
   return { success: true };
 }
 
 /**
  * Recalcula el costoUnitario del insumo elaborado a partir de su composición
- * (cantidad × costo de cada componente, recursivo si un componente es a su
- * vez elaborado — ver calcularCostoInsumo). Como `cantidad` está definida
- * "por cada 1 [unidad del elaborado]", el resultado ya es el costo por
- * unidad — no hay que dividir por ningún rendimiento de lote.
+ * (cantidad × costo de cada componente, recursivo si un componente es a su vez
+ * elaborado — ver calcularCostoInsumo) dividido por el rendimiento de la tanda.
+ *
+ * También deja el par precio/cantidad del insumo coherente con ese costo: si no,
+ * al abrir después el formulario del insumo se vería el precio viejo y guardarlo
+ * pisaría este cálculo.
  */
 export async function recalcularCostoElaborado(insumoId: string): Promise<ActionResult> {
   try {
@@ -162,6 +204,9 @@ export async function recalcularCostoElaborado(insumoId: string): Promise<Action
   } catch {
     return { success: false, error: "No autorizado" };
   }
+
+  const insumo = await prisma.insumo.findUnique({ where: { id: insumoId }, select: { cantidadReferencia: true } });
+  if (!insumo) return { success: false, error: "Ese insumo ya no existe." };
 
   const totalComponentes = await prisma.insumoComponente.count({ where: { insumoElaboradoId: insumoId } });
   if (totalComponentes === 0) {
@@ -173,9 +218,14 @@ export async function recalcularCostoElaborado(insumoId: string): Promise<Action
   // recalcules manualmente de abajo hacia arriba en un orden específico.
   const nuevoCosto = await calcularCostoInsumo(insumoId, new Map(), new Set());
 
-  await prisma.insumo.update({ where: { id: insumoId }, data: { costoUnitario: nuevoCosto } });
+  await prisma.insumo.update({
+    where: { id: insumoId },
+    data: referenciaDesdeCosto(nuevoCosto, insumo.cantidadReferencia),
+  });
 
   revalidatePath("/admin/inventario");
   revalidatePath("/admin/inventario/recetas");
+  revalidatePath("/admin/inventario/produccion");
+  revalidatePath("/admin/inventario/resumen");
   return { success: true };
 }

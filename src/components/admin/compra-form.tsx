@@ -9,38 +9,42 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { registrarCompra } from "@/actions/admin/compras";
+import { UNIDAD_LABEL, costoPorUnidad, formatCosto } from "@/lib/costos";
 import type { Insumo, Proveedor } from "@prisma/client";
 
-type Fila = { insumoId: string; cantidad: number; costoUnitario: number };
+// Se captura lo que dice la factura —cuánto vino y cuánto se pagó por eso— en vez
+// del costo de una sola unidad, que casi nunca es un número redondo y obligaba a
+// sacar la calculadora antes de registrar la compra.
+type Fila = { insumoId: string; cantidad: number; totalLinea: number };
 
-const UNIDAD_LABEL: Record<string, string> = {
-  GRAMOS: "g",
-  KILOGRAMOS: "kg",
-  MILILITROS: "ml",
-  LITROS: "l",
-  UNIDAD: "unidad",
-};
+const FILA_VACIA = (insumos: Insumo[]): Fila => ({ insumoId: insumos[0]?.id ?? "", cantidad: 1, totalLinea: 0 });
 
 export function CompraForm({ proveedores, insumos, onDone }: { proveedores: Proveedor[]; insumos: Insumo[]; onDone: () => void }) {
   const [proveedorId, setProveedorId] = React.useState(proveedores[0]?.id ?? "");
   const [notas, setNotas] = React.useState("");
-  const [filas, setFilas] = React.useState<Fila[]>([{ insumoId: insumos[0]?.id ?? "", cantidad: 1, costoUnitario: 0 }]);
+  const [filas, setFilas] = React.useState<Fila[]>([FILA_VACIA(insumos)]);
   const [loading, setLoading] = React.useState(false);
 
-  const total = filas.reduce((sum, f) => sum + f.cantidad * f.costoUnitario, 0);
+  const total = filas.reduce((sum, f) => sum + f.totalLinea, 0);
 
   const actualizarFila = (index: number, cambios: Partial<Fila>) => {
     setFilas((prev) => prev.map((f, i) => (i === index ? { ...f, ...cambios } : f)));
   };
 
-  const agregarFila = () => setFilas((prev) => [...prev, { insumoId: insumos[0]?.id ?? "", cantidad: 1, costoUnitario: 0 }]);
+  const agregarFila = () => setFilas((prev) => [...prev, FILA_VACIA(insumos)]);
   const quitarFila = (index: number) => setFilas((prev) => prev.filter((_, i) => i !== index));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!proveedorId) return toast.error("Elige un proveedor");
+    if (filas.some((f) => f.cantidad <= 0)) return toast.error("Cada línea necesita una cantidad mayor a 0");
     setLoading(true);
-    const result = await registrarCompra({ proveedorId, notas: notas || undefined, items: filas });
+    const items = filas.map((f) => ({
+      insumoId: f.insumoId,
+      cantidad: f.cantidad,
+      costoUnitario: costoPorUnidad(f.totalLinea, f.cantidad),
+    }));
+    const result = await registrarCompra({ proveedorId, notas: notas || undefined, items });
     setLoading(false);
     if (!result.success) return toast.error(result.error);
     toast.success("Compra registrada — stock y costos actualizados");
@@ -62,31 +66,40 @@ export function CompraForm({ proveedores, insumos, onDone }: { proveedores: Prov
 
       <div className="space-y-2">
         <Label>Insumos comprados</Label>
-        {filas.map((fila, index) => (
-          <div key={index} className="flex flex-wrap items-end gap-2 rounded-xl border border-charcoal-100 p-3 dark:border-charcoal-600">
-            <div className="min-w-[160px] flex-1">
-              <label className="mb-1 block text-xs text-charcoal-400">Insumo</label>
-              <Select value={fila.insumoId} onChange={(e) => actualizarFila(index, { insumoId: e.target.value })}>
-                {insumos.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.nombre} ({UNIDAD_LABEL[i.unidad]})
-                  </option>
-                ))}
-              </Select>
+        {filas.map((fila, index) => {
+          const unidad = UNIDAD_LABEL[insumos.find((i) => i.id === fila.insumoId)?.unidad ?? "UNIDAD"];
+          return (
+            <div key={index} className="rounded-xl border border-charcoal-100 p-3 dark:border-charcoal-600">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[160px] flex-1">
+                  <label className="mb-1 block text-xs text-charcoal-400">Insumo</label>
+                  <Select value={fila.insumoId} onChange={(e) => actualizarFila(index, { insumoId: e.target.value })}>
+                    {insumos.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.nombre} ({UNIDAD_LABEL[i.unidad]})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="w-28">
+                  <label className="mb-1 block text-xs text-charcoal-400">Cantidad ({unidad})</label>
+                  <Input type="number" step="any" min={0} value={fila.cantidad} onChange={(e) => actualizarFila(index, { cantidad: Number(e.target.value) })} />
+                </div>
+                <div className="w-32">
+                  <label className="mb-1 block text-xs text-charcoal-400">Pagaste (COP)</label>
+                  <Input type="number" step="any" min={0} value={fila.totalLinea} onChange={(e) => actualizarFila(index, { totalLinea: Number(e.target.value) })} />
+                </div>
+                <Button type="button" size="icon" variant="ghost" onClick={() => quitarFila(index)} disabled={filas.length === 1} aria-label="Quitar fila">
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+              <p className="mt-1.5 text-xs text-charcoal-400">
+                Sale a {formatCosto(costoPorUnidad(fila.totalLinea, fila.cantidad))} por {unidad} — con eso se recalcula el
+                costo promedio del insumo.
+              </p>
             </div>
-            <div className="w-24">
-              <label className="mb-1 block text-xs text-charcoal-400">Cantidad</label>
-              <Input type="number" step="any" min={0} value={fila.cantidad} onChange={(e) => actualizarFila(index, { cantidad: Number(e.target.value) })} />
-            </div>
-            <div className="w-28">
-              <label className="mb-1 block text-xs text-charcoal-400">Costo c/u</label>
-              <Input type="number" min={0} value={fila.costoUnitario} onChange={(e) => actualizarFila(index, { costoUnitario: Number(e.target.value) })} />
-            </div>
-            <Button type="button" size="icon" variant="ghost" onClick={() => quitarFila(index)} disabled={filas.length === 1} aria-label="Quitar fila">
-              <Trash2 className="h-4 w-4 text-red-500" />
-            </Button>
-          </div>
-        ))}
+          );
+        })}
         <Button type="button" variant="ghost" onClick={agregarFila}>
           <Plus className="h-4 w-4" /> Agregar insumo
         </Button>

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { upsertInsumo } from "@/actions/admin/insumos";
+import { UNIDAD_LABEL, costoPorUnidad, formatCosto } from "@/lib/costos";
 import type { Insumo, Proveedor } from "@prisma/client";
 
 const UNIDADES = [
@@ -30,7 +31,11 @@ export function InsumoForm({
     nombre: insumo?.nombre ?? "",
     unidad: insumo?.unidad ?? "UNIDAD",
     stockMinimo: insumo?.stockMinimo ?? 0,
-    costoUnitario: insumo?.costoUnitario ?? 0,
+    // El precio se escribe como se compra ("$25.000 por 3.000 g") y el costo por
+    // unidad lo saca el sistema. Antes había que teclear el costo de un solo
+    // gramo, que casi nunca es un número redondo.
+    precioReferencia: insumo?.precioReferencia ?? 0,
+    cantidadReferencia: insumo?.cantidadReferencia ?? 1,
     proveedor: insumo?.proveedor ?? "",
     proveedorPrincipalId: insumo?.proveedorPrincipalId ?? "",
     fechaVencimiento: insumo?.fechaVencimiento ? new Date(insumo.fechaVencimiento).toISOString().slice(0, 10) : "",
@@ -38,6 +43,9 @@ export function InsumoForm({
     activo: insumo?.activo ?? true,
   });
   const [loading, setLoading] = React.useState(false);
+
+  const unidadCorta = UNIDAD_LABEL[form.unidad] ?? "unidad";
+  const costoCalculado = costoPorUnidad(form.precioReferencia, form.cantidadReferencia);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,29 +82,59 @@ export function InsumoForm({
           ))}
         </Select>
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="stockMinimo">Stock mínimo (alerta)</Label>
-          <Input
-            id="stockMinimo"
-            type="number"
-            step="any"
-            min={0}
-            value={form.stockMinimo}
-            onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })}
-          />
-        </div>
-        <div>
-          <Label htmlFor="costoUnitario">Costo por unidad (COP)</Label>
-          <Input
-            id="costoUnitario"
-            type="number"
-            min={0}
-            value={form.costoUnitario}
-            onChange={(e) => setForm({ ...form, costoUnitario: Number(e.target.value) })}
-          />
-        </div>
+      <div>
+        <Label htmlFor="stockMinimo">Stock mínimo (alerta)</Label>
+        <Input
+          id="stockMinimo"
+          type="number"
+          step="any"
+          min={0}
+          value={form.stockMinimo}
+          onChange={(e) => setForm({ ...form, stockMinimo: Number(e.target.value) })}
+        />
       </div>
+
+      <div className="rounded-xl border border-charcoal-200 p-3 dark:border-charcoal-600">
+        <Label htmlFor="precioReferencia">Precio — tal como lo compras</Label>
+        <div className="mt-1 flex flex-wrap items-end gap-2">
+          <div className="min-w-[110px] flex-1">
+            <span className="mb-1 block text-xs text-charcoal-400">Pagas (COP)</span>
+            <Input
+              id="precioReferencia"
+              type="number"
+              step="any"
+              min={0}
+              value={form.precioReferencia}
+              onChange={(e) => setForm({ ...form, precioReferencia: Number(e.target.value) })}
+              placeholder="Ej: 25000"
+            />
+          </div>
+          <span className="pb-2 text-sm text-charcoal-400">por</span>
+          <div className="min-w-[110px] flex-1">
+            <span className="mb-1 block text-xs text-charcoal-400">Cantidad ({unidadCorta})</span>
+            <Input
+              id="cantidadReferencia"
+              type="number"
+              step="any"
+              min={0}
+              value={form.cantidadReferencia}
+              onChange={(e) => setForm({ ...form, cantidadReferencia: Number(e.target.value) })}
+              placeholder="Ej: 3000"
+            />
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-charcoal-400">
+          Costo por {unidadCorta}:{" "}
+          <strong className="text-charcoal-700 dark:text-cream">{formatCosto(costoCalculado)}</strong> — se calcula solo, y es
+          el que suman las recetas según la cantidad que lleve cada una.
+        </p>
+        {form.esElaborado && (
+          <p className="mt-1 text-xs text-charcoal-400">
+            Como es elaborado, este precio se sobrescribe cuando presionas «Usar como costo del insumo» en su composición.
+          </p>
+        )}
+      </div>
+
       <div>
         <Label htmlFor="fechaVencimiento">Próxima fecha de vencimiento (opcional)</Label>
         <Input

@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { registrarProduccion } from "@/actions/admin/produccion";
-import { formatCOP, formatDateTime, cn } from "@/lib/utils";
+import { formatDateTime, cn } from "@/lib/utils";
+import { formatCosto, porUnidadDeElaborado } from "@/lib/costos";
 import type { Insumo, InsumoComponente, Produccion, UnidadInsumo } from "@prisma/client";
 
 type ElaboradoConComposicion = Insumo & {
@@ -40,10 +41,16 @@ export function ProduccionManager({
   // Cuánto se puede preparar como máximo con el stock actual: el componente
   // que primero se agota manda. Se calcula aquí (y no solo en el servidor) para
   // avisar mientras se escribe, en vez de fallar al guardar.
+  // La composición se guarda por tanda (400 g de mayonesa en una tanda que rinde
+  // 700 g de aderezo), así que todo lo de esta pantalla parte de bajarla a
+  // "cuánto entra en 1 unidad".
   const maximoProducible = React.useMemo(() => {
     if (!elegido || elegido.composicion.length === 0) return 0;
     return Math.min(
-      ...elegido.composicion.map((c) => (c.cantidad > 0 ? c.insumoBase.stockActual / c.cantidad : Infinity))
+      ...elegido.composicion.map((c) => {
+        const porUnidad = porUnidadDeElaborado(c.cantidad, elegido.rendimiento);
+        return porUnidad > 0 ? c.insumoBase.stockActual / porUnidad : Infinity;
+      })
     );
   }, [elegido]);
 
@@ -51,7 +58,10 @@ export function ProduccionManager({
 
   const costoEstimado = React.useMemo(() => {
     if (!elegido) return 0;
-    return elegido.composicion.reduce((suma, c) => suma + c.cantidad * cantidadNumero * c.insumoBase.costoUnitario, 0);
+    return elegido.composicion.reduce(
+      (suma, c) => suma + porUnidadDeElaborado(c.cantidad, elegido.rendimiento) * cantidadNumero * c.insumoBase.costoUnitario,
+      0
+    );
   }, [elegido, cantidadNumero]);
 
   const registrar = async () => {
@@ -119,6 +129,12 @@ export function ProduccionManager({
           <p className={cn("mt-1.5 text-xs", excedeStock ? "font-semibold text-red-600" : "text-charcoal-400")}>
             Con el stock actual puedes preparar hasta {redondear(maximoProducible)} {elegido?.unidad.toLowerCase()}.
           </p>
+          {elegido && (
+            <p className="mt-0.5 text-xs text-charcoal-400">
+              Una tanda de la composición rinde {redondear(elegido.rendimiento)} {elegido.unidad.toLowerCase()}; puedes
+              registrar más o menos y los componentes se descuentan proporcionalmente.
+            </p>
+          )}
         </div>
 
         {elegido && elegido.composicion.length > 0 && cantidadNumero > 0 && (
@@ -126,7 +142,7 @@ export function ProduccionManager({
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-400">Se descontará</p>
             <div className="space-y-1">
               {elegido.composicion.map((c) => {
-                const necesario = c.cantidad * cantidadNumero;
+                const necesario = porUnidadDeElaborado(c.cantidad, elegido.rendimiento) * cantidadNumero;
                 const alcanza = necesario <= c.insumoBase.stockActual;
                 return (
                   <div key={c.id} className="flex items-center justify-between gap-2">
@@ -143,7 +159,7 @@ export function ProduccionManager({
             </div>
             <div className="mt-3 flex justify-between border-t border-charcoal-100 pt-2 dark:border-charcoal-700">
               <span className="text-charcoal-500 dark:text-charcoal-300">Costo del lote</span>
-              <span className="font-mono font-bold text-charcoal-900 dark:text-cream">{formatCOP(costoEstimado)}</span>
+              <span className="font-mono font-bold text-charcoal-900 dark:text-cream">{formatCosto(costoEstimado)}</span>
             </div>
           </div>
         )}
@@ -185,7 +201,7 @@ export function ProduccionManager({
                   {redondear(p.cantidad)} {p.insumoElaborado.unidad.toLowerCase()}
                 </span>
                 <span className="hidden shrink-0 font-mono text-xs text-charcoal-400 sm:inline">
-                  {formatCOP(p.costoUnitario * p.cantidad)}
+                  {formatCosto(p.costoUnitario * p.cantidad)}
                 </span>
               </div>
             ))}

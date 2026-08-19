@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/actions/auth";
+import { redondearCosto, referenciaDesdeCosto } from "@/lib/costos";
 
 async function requireAdmin() {
   const session = await auth();
@@ -15,7 +16,9 @@ async function requireAdmin() {
 const compraItemSchema = z.object({
   insumoId: z.string(),
   cantidad: z.coerce.number().positive("La cantidad debe ser mayor a 0"),
-  costoUnitario: z.coerce.number().int().min(0),
+  // Sin .int(): un tarro de 3.000 g a $25.000 son $8,3333 por gramo, y forzarlo
+  // a $8 desviaba el costo de cada receta que usara ese insumo.
+  costoUnitario: z.coerce.number().min(0),
 });
 
 const compraSchema = z.object({
@@ -54,7 +57,8 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
     return { success: false, error: "Uno de los insumos seleccionados ya no existe." };
   }
 
-  const total = items.reduce((sum, item) => sum + item.cantidad * item.costoUnitario, 0);
+  // El total de la compra sí se redondea a peso: es la plata que se pagó.
+  const total = Math.round(items.reduce((sum, item) => sum + item.cantidad * item.costoUnitario, 0));
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -76,16 +80,25 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
         const nuevoStock = insumo.stockActual + item.cantidad;
         const nuevoCosto =
           nuevoStock > 0
-            ? Math.round((insumo.stockActual * insumo.costoUnitario + item.cantidad * item.costoUnitario) / nuevoStock)
+            ? (insumo.stockActual * insumo.costoUnitario + item.cantidad * item.costoUnitario) / nuevoStock
             : item.costoUnitario;
 
-        await tx.insumo.update({ where: { id: item.insumoId }, data: { stockActual: nuevoStock, costoUnitario: nuevoCosto } });
+        await tx.insumo.update({
+          where: { id: item.insumoId },
+          data: {
+            stockActual: nuevoStock,
+            // El promedio ponderado manda sobre el precio escrito a mano en
+            // Insumos, así que se reescribe también el par precio/cantidad para
+            // que ambas pantallas cuenten la misma historia.
+            ...referenciaDesdeCosto(nuevoCosto, insumo.cantidadReferencia),
+          },
+        });
         await tx.movimientoInsumo.create({
           data: {
             insumoId: item.insumoId,
             tipo: "ENTRADA",
             cantidad: item.cantidad,
-            costoUnitario: item.costoUnitario,
+            costoUnitario: redondearCosto(item.costoUnitario),
             motivo: `Compra ${compra.id}`,
             createdById: userId,
           },

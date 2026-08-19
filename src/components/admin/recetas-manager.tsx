@@ -9,19 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { upsertRecetaItem, deleteRecetaItem } from "@/actions/admin/recetas";
+import { UNIDAD_LABEL, formatCosto } from "@/lib/costos";
 import type { Insumo, Product, RecetaItem } from "@prisma/client";
 
 type ProductWithReceta = Product & {
   category: { name: string };
   recetaItems: (RecetaItem & { insumo: Insumo })[];
-};
-
-const UNIDAD_LABEL: Record<string, string> = {
-  GRAMOS: "g",
-  KILOGRAMOS: "kg",
-  MILILITROS: "ml",
-  LITROS: "l",
-  UNIDAD: "unidad",
 };
 
 export function RecetasManager({ products, insumos }: { products: ProductWithReceta[]; insumos: Insumo[] }) {
@@ -105,16 +98,23 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
             <div className="flex gap-6 text-sm">
               <div>
                 <p className="text-charcoal-400">Costo receta</p>
-                <p className="font-semibold text-charcoal-900 dark:text-cream">${costo.toLocaleString("es-CO")}</p>
+                <p className="font-semibold text-charcoal-900 dark:text-cream">{formatCosto(costo)}</p>
               </div>
               <div>
                 <p className="text-charcoal-400">Margen</p>
                 <p className={`font-semibold ${margen < 0 ? "text-red-500" : "text-olive-600 dark:text-olive-400"}`}>
-                  ${margen.toLocaleString("es-CO")} ({margenPct}%)
+                  {formatCosto(margen)} ({margenPct}%)
                 </p>
               </div>
             </div>
           </div>
+
+          <p className="mb-3 text-xs text-charcoal-400">
+            Aquí solo defines <strong className="text-charcoal-600 dark:text-charcoal-200">cuánto</strong> lleva cada plato.
+            Los precios se editan una sola vez en la pestaña <strong className="text-charcoal-600 dark:text-charcoal-200">Insumos</strong>{" "}
+            —y en el caso de los elaborados como el aderezo, salen de su composición—; la receta solo los suma según la
+            cantidad.
+          </p>
 
           <div className="overflow-x-auto rounded-2xl border border-charcoal-100 dark:border-charcoal-700">
             <table className="w-full text-left text-sm">
@@ -122,6 +122,7 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
                 <tr>
                   <th className="px-4 py-3">Insumo</th>
                   <th className="px-4 py-3">Cantidad</th>
+                  <th className="px-4 py-3">Costo unitario</th>
                   <th className="px-4 py-3">Costo parcial</th>
                   <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
@@ -129,7 +130,14 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
               <tbody className="divide-y divide-charcoal-100 dark:divide-charcoal-700">
                 {product.recetaItems.map((item) => (
                   <tr key={item.id} className="bg-white dark:bg-charcoal-800">
-                    <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">{item.insumo.nombre}</td>
+                    <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">
+                      {item.insumo.nombre}
+                      {item.insumo.esElaborado && (
+                        <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-charcoal-400">
+                          elaborado
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <input
@@ -147,7 +155,15 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
                         <span className="text-xs text-charcoal-400">{UNIDAD_LABEL[item.insumo.unidad]}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">${(item.cantidad * item.insumo.costoUnitario).toLocaleString("es-CO")}</td>
+                    {/* Solo lectura a propósito: el precio tiene un único dueño,
+                        la pestaña Insumos. Editarlo también aquí abriría la
+                        puerta a que el mismo aderezo valiera distinto en cada
+                        hamburguesa. */}
+                    <td className="px-4 py-3 text-charcoal-400" title="Se edita en la pestaña Insumos">
+                      {formatCosto(item.insumo.costoUnitario)}
+                      <span className="text-xs"> / {UNIDAD_LABEL[item.insumo.unidad]}</span>
+                    </td>
+                    <td className="px-4 py-3">{formatCosto(item.cantidad * item.insumo.costoUnitario)}</td>
                     <td className="px-4 py-3 text-right">
                       <Button size="icon" variant="ghost" onClick={() => handleRemove(item.id)} aria-label="Quitar">
                         <Trash2 className="h-4 w-4 text-red-500" />
@@ -157,7 +173,7 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
                 ))}
                 {product.recetaItems.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-charcoal-400">
+                    <td colSpan={5} className="px-4 py-6 text-center text-charcoal-400">
                       Este producto todavía no tiene receta. Agrega insumos abajo.
                     </td>
                   </tr>

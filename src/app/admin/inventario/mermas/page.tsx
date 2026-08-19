@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { InventarioTabs } from "@/components/admin/inventario-tabs";
 import { obtenerPerdidas } from "@/lib/inventario";
+import { formatCosto } from "@/lib/costos";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
           <p className="text-xs uppercase tracking-wide text-red-700 dark:text-red-300">Pérdida estimada</p>
-          <p className="mt-1 font-display text-2xl text-red-700 dark:text-red-300">${totalPerdida.toLocaleString("es-CO")}</p>
+          <p className="mt-1 font-display text-2xl text-red-700 dark:text-red-300">{formatCosto(totalPerdida)}</p>
         </div>
         <div className="rounded-2xl border border-charcoal-100 bg-white p-4 dark:border-charcoal-700 dark:bg-charcoal-800">
           <p className="text-xs uppercase tracking-wide text-charcoal-400">Eventos registrados</p>
@@ -63,7 +64,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
             {topInsumos.map((i) => (
               <div key={i.nombre} className="flex items-center justify-between text-sm">
                 <span className="text-charcoal-700 dark:text-cream">{i.nombre}</span>
-                <span className="font-mono font-semibold text-red-600 dark:text-red-400">${i.costo.toLocaleString("es-CO")}</span>
+                <span className="font-mono font-semibold text-red-600 dark:text-red-400">{formatCosto(i.costo)}</span>
               </div>
             ))}
           </div>
@@ -91,7 +92,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
                 <td className="px-4 py-3">
                   {Math.abs(m.cantidad)} {m.insumo.unidad.toLowerCase()}
                 </td>
-                <td className="px-4 py-3 font-mono text-red-600 dark:text-red-400">${costoDe(m).toLocaleString("es-CO")}</td>
+                <td className="px-4 py-3 font-mono text-red-600 dark:text-red-400">{formatCosto(costoDe(m))}</td>
                 <td className="px-4 py-3 text-charcoal-400">{m.motivo || "—"}</td>
               </tr>
             ))}

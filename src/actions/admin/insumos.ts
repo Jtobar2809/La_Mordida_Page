@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/actions/auth";
 import { MovimientoTipo, UnidadInsumo } from "@prisma/client";
+import { costoPorUnidad, redondearCosto } from "@/lib/costos";
 
 async function requireAdmin() {
   const session = await auth();
@@ -18,7 +19,11 @@ const insumoSchema = z.object({
   nombre: z.string().min(2, "El nombre es muy corto"),
   unidad: z.nativeEnum(UnidadInsumo),
   stockMinimo: z.coerce.number().min(0).default(0),
-  costoUnitario: z.coerce.number().int().min(0).default(0),
+  // El precio se escribe como se compra: cuánto se pagó y por qué cantidad.
+  // El costo por unidad sale de dividir, no se pide aparte — pedirlo obligaba a
+  // sacar la calculadora para saber cuánto vale un gramo de mayonesa.
+  precioReferencia: z.coerce.number().min(0, "El precio no puede ser negativo").default(0),
+  cantidadReferencia: z.coerce.number().positive("La cantidad del precio debe ser mayor a 0").default(1),
   proveedor: z.string().optional(),
   proveedorPrincipalId: z
     .string()
@@ -42,7 +47,16 @@ export async function upsertInsumo(input: unknown): Promise<ActionResult<{ id: s
   const parsed = insumoSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
-  const { id, ...data } = parsed.data;
+  const { id, ...campos } = parsed.data;
+
+  // costoUnitario es siempre derivado: nunca se escribe a mano en ningún lado.
+  // Así el precio tiene un solo dueño (esta pantalla) y recetas/composiciones
+  // solo lo leen.
+  const data = {
+    ...campos,
+    precioReferencia: redondearCosto(campos.precioReferencia),
+    costoUnitario: costoPorUnidad(campos.precioReferencia, campos.cantidadReferencia),
+  };
 
   try {
     if (id) {
@@ -51,6 +65,8 @@ export async function upsertInsumo(input: unknown): Promise<ActionResult<{ id: s
       await prisma.insumo.update({ where: { id }, data });
       revalidatePath("/admin/inventario");
       revalidatePath("/admin/inventario/recetas");
+      revalidatePath("/admin/inventario/produccion");
+      revalidatePath("/admin/inventario/resumen");
       return { success: true, data: { id } };
     } else {
       const creado = await prisma.insumo.create({ data: { ...data, stockActual: 0 } });

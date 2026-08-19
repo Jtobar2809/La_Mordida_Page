@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/actions/auth";
+import { porUnidadDeElaborado, redondearCosto, referenciaDesdeCosto } from "@/lib/costos";
 
 async function requireAdmin() {
   const session = await auth();
@@ -61,13 +62,17 @@ export async function registrarProduccion(input: unknown): Promise<ActionResult<
 
   // Se valida TODO el stock antes de tocar nada: si falta un solo componente,
   // no tiene sentido descontar los otros para una preparación que no se hizo.
+  //
+  // La composición está anotada por tanda (400 g de mayonesa en una tanda que
+  // rinde 700 g de aderezo), así que primero se baja a "por unidad" y luego se
+  // multiplica por lo que se preparó hoy.
   const requerimientos = elaborado.composicion.map((c) => ({
     insumoId: c.insumoBaseId,
     nombre: c.insumoBase.nombre,
     unidad: c.insumoBase.unidad,
     disponible: c.insumoBase.stockActual,
     costoUnitario: c.insumoBase.costoUnitario,
-    necesario: c.cantidad * cantidad,
+    necesario: porUnidadDeElaborado(c.cantidad, elaborado.rendimiento) * cantidad,
   }));
 
   const faltantes = requerimientos.filter((r) => r.necesario > r.disponible);
@@ -79,7 +84,7 @@ export async function registrarProduccion(input: unknown): Promise<ActionResult<
   }
 
   const costoTotalLote = requerimientos.reduce((sum, r) => sum + r.necesario * r.costoUnitario, 0);
-  const costoUnitarioLote = Math.round(costoTotalLote / cantidad);
+  const costoUnitarioLote = redondearCosto(costoTotalLote / cantidad);
 
   try {
     const produccion = await prisma.$transaction(
@@ -108,12 +113,18 @@ export async function registrarProduccion(input: unknown): Promise<ActionResult<
         const nuevoStock = elaborado.stockActual + cantidad;
         const nuevoCosto =
           nuevoStock > 0
-            ? Math.round((elaborado.stockActual * elaborado.costoUnitario + cantidad * costoUnitarioLote) / nuevoStock)
+            ? (elaborado.stockActual * elaborado.costoUnitario + cantidad * costoUnitarioLote) / nuevoStock
             : costoUnitarioLote;
 
         await tx.insumo.update({
           where: { id: insumoElaboradoId },
-          data: { stockActual: nuevoStock, costoUnitario: nuevoCosto },
+          data: {
+            stockActual: nuevoStock,
+            // referenciaDesdeCosto deja también el par precio/cantidad al día,
+            // para que el formulario del insumo no muestre un precio viejo que
+            // al guardarse pisaría este promedio.
+            ...referenciaDesdeCosto(nuevoCosto, elaborado.cantidadReferencia),
+          },
         });
         await tx.movimientoInsumo.create({
           data: {
@@ -156,7 +167,10 @@ export async function calcularMaximoProducible(insumoElaboradoId: string): Promi
   if (!elaborado || elaborado.composicion.length === 0) return 0;
 
   return Math.min(
-    ...elaborado.composicion.map((c) => (c.cantidad > 0 ? c.insumoBase.stockActual / c.cantidad : Infinity))
+    ...elaborado.composicion.map((c) => {
+      const porUnidad = porUnidadDeElaborado(c.cantidad, elaborado.rendimiento);
+      return porUnidad > 0 ? c.insumoBase.stockActual / porUnidad : Infinity;
+    })
   );
 }
 

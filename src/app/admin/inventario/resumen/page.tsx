@@ -3,6 +3,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { InventarioTabs } from "@/components/admin/inventario-tabs";
 import { ESTADOS_VENTA_CONFIRMADA, obtenerPerdidas } from "@/lib/inventario";
+import { formatCosto } from "@/lib/costos";
 
 export const dynamic = "force-dynamic";
 
@@ -201,7 +202,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-2xl text-charcoal-900 dark:text-cream">
-            ${ingresos.toLocaleString("es-CO")}
+            {formatCosto(ingresos)}
           </p>
         </div>
 
@@ -211,7 +212,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-2xl text-charcoal-900 dark:text-cream">
-            ${cogs.toLocaleString("es-CO")}
+            {formatCosto(cogs)}
           </p>
         </div>
 
@@ -221,7 +222,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-2xl text-olive-700 dark:text-olive-300">
-            ${margenBruto.toLocaleString("es-CO")}{" "}
+            {formatCosto(margenBruto)}{" "}
             <span className="text-base">
               ({margenBrutoPct}%)
             </span>
@@ -234,7 +235,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-2xl text-red-700 dark:text-red-300">
-            ${perdidas.total.toLocaleString("es-CO")}
+            {formatCosto(perdidas.total)}
           </p>
         </div>
       </div>
@@ -246,7 +247,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-xl text-charcoal-900 dark:text-cream">
-            ${valorInventario.toLocaleString("es-CO")}
+            {formatCosto(valorInventario)}
           </p>
         </div>
 
@@ -256,7 +257,7 @@ export default async function AdminResumenPage({
           </p>
 
           <p className="mt-1 font-display text-xl text-charcoal-900 dark:text-cream">
-            ${(compras._sum?.total ?? 0).toLocaleString("es-CO")}{" "}
+            {formatCosto(compras._sum?.total ?? 0)}{" "}
             <span className="text-sm text-charcoal-400">
               ({compras._count._all})
             </span>

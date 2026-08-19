@@ -167,7 +167,23 @@ model Insumo {
   unidad               UnidadInsumo
   stockActual          Float              @default(0)
   stockMinimo          Float              @default(0)
-  costoUnitario        Int                @default(0)
+  // Costo de UNA unidad del insumo. Es Float y no Int porque casi nunca se
+  // compra "por unidad": la mayonesa viene en tarros de 3.000 g y el aceite en
+  // garrafas de 5 l, así que el costo real por gramo/ml tiene decimales. Con Int
+  // ($8/g en vez de $8,333/g) el error se multiplicaba por cada gramo de cada
+  // receta y el margen de la hamburguesa salía inflado.
+  costoUnitario        Float              @default(0)
+  // Cómo se compra realmente el insumo: "pagué $25.000 por 3.000 g". Se guarda
+  // tal cual lo escribe la persona (no solo el cociente) para que al volver a
+  // editar vea su propio dato y no un 8,333 que no reconoce. costoUnitario
+  // siempre se deriva de estos dos: precioReferencia / cantidadReferencia.
+  precioReferencia     Float              @default(0)
+  cantidadReferencia   Float              @default(1)
+  // Solo para elaborados: cuánto rinde UNA tanda de la composición (ej. la
+  // receta del aderezo da 700 g). Antes la composición se guardaba "por cada 1
+  // unidad", lo que obligaba a pesar en fracciones imposibles; ahora se anotan
+  // los pesos reales de la olla y el sistema divide por el rendimiento.
+  rendimiento          Float              @default(1)
   proveedor            String?
   proveedorPrincipalId String?
   fechaVencimiento     DateTime?
@@ -207,8 +223,12 @@ model RecetaItem {
 
 // Insumos elaborados: algunos insumos (salsas, mezclas) no se compran directo,
 // se preparan combinando otros insumos base. InsumoComponente modela esa
-// "receta interna": cuánto de un insumo base entra por cada 1 [unidad del
-// insumo elaborado] (ej. 0.4g de mayonesa por cada 1g de aderezo).
+// "receta interna": cuánto de cada insumo base entra en UNA tanda completa
+// (ej. 400 g de mayonesa en una tanda de aderezo que rinde 700 g). El
+// rendimiento de la tanda vive en `Insumo.rendimiento`; dividir por él da el
+// consumo por unidad. Antes `cantidad` era "por cada 1 unidad del elaborado",
+// que obligaba a anotar 0,571 g de mayonesa por gramo de aderezo en vez de los
+// gramos que de verdad se pesan en la cocina.
 model InsumoComponente {
   id                String   @id @default(cuid())
   insumoElaboradoId String
@@ -238,7 +258,7 @@ model Produccion {
   cantidad          Float
   // Costo unitario del elaborado calculado a partir de lo que costaron sus
   // componentes en ESTE lote, no de una tabla de precios teórica.
-  costoUnitario     Int      @default(0)
+  costoUnitario     Float    @default(0)
   notas             String?
   createdById       String?
   createdAt         DateTime @default(now())
@@ -254,7 +274,7 @@ model MovimientoInsumo {
   insumoId      String
   tipo          MovimientoTipo
   cantidad      Float
-  costoUnitario Int?
+  costoUnitario Float?
   motivo        String?
   orderId       String?
   produccionId  String?
@@ -307,7 +327,7 @@ model CompraItem {
   compraId      String
   insumoId      String
   cantidad      Float
-  costoUnitario Int
+  costoUnitario Float
   compra        Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
   insumo        Insumo @relation(fields: [insumoId], references: [id], onDelete: Restrict)
 

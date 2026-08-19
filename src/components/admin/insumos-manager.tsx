@@ -11,19 +11,12 @@ import { InsumoForm } from "@/components/admin/insumo-form";
 import { MovimientoForm } from "@/components/admin/movimiento-form";
 import { ComposicionManager } from "@/components/admin/composicion-manager";
 import { deleteInsumo } from "@/actions/admin/insumos";
+import { UNIDAD_LABEL, formatCosto, redondearCantidad } from "@/lib/costos";
 import type { Insumo, Proveedor, InsumoComponente } from "@prisma/client";
 
 type InsumoConProveedor = Insumo & {
   proveedorPrincipal: { nombre: string } | null;
   composicion: (InsumoComponente & { insumoBase: Insumo })[];
-};
-
-const UNIDAD_LABEL: Record<string, string> = {
-  GRAMOS: "g",
-  KILOGRAMOS: "kg",
-  MILILITROS: "ml",
-  LITROS: "l",
-  UNIDAD: "unidad",
 };
 
 export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConProveedor[]; proveedores: Proveedor[] }) {
@@ -57,7 +50,7 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
             <ul className="mt-1 list-inside list-disc space-y-0.5">
               {bajoStock.map((i) => (
                 <li key={i.id}>
-                  {i.nombre} — faltan {Math.max(0, i.stockMinimo - i.stockActual)} {UNIDAD_LABEL[i.unidad]} para llegar al mínimo
+                  {i.nombre} — faltan {redondearCantidad(Math.max(0, i.stockMinimo - i.stockActual))} {UNIDAD_LABEL[i.unidad]} para llegar al mínimo
                 </li>
               ))}
             </ul>
@@ -100,12 +93,21 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
                 <tr key={insumo.id} className="bg-white dark:bg-charcoal-800">
                   <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">{insumo.nombre}</td>
                   <td className={`px-4 py-3 ${bajo ? "font-semibold text-red-600 dark:text-red-400" : ""}`}>
-                    {insumo.stockActual} {UNIDAD_LABEL[insumo.unidad]}
+                    {redondearCantidad(insumo.stockActual)} {UNIDAD_LABEL[insumo.unidad]}
                   </td>
                   <td className="px-4 py-3 text-charcoal-400">
-                    {insumo.stockMinimo} {UNIDAD_LABEL[insumo.unidad]}
+                    {redondearCantidad(insumo.stockMinimo)} {UNIDAD_LABEL[insumo.unidad]}
                   </td>
-                  <td className="px-4 py-3">${insumo.costoUnitario.toLocaleString("es-CO")}</td>
+                  <td className="px-4 py-3">
+                    {formatCosto(insumo.costoUnitario)}
+                    <span className="text-xs text-charcoal-400"> / {UNIDAD_LABEL[insumo.unidad]}</span>
+                    {/* El precio "como se compra" es el que la persona reconoce;
+                        el costo por unidad de arriba es el que sale de dividirlo. */}
+                    <span className="block text-xs text-charcoal-400">
+                      {formatCosto(insumo.precioReferencia)} por {redondearCantidad(insumo.cantidadReferencia)}{" "}
+                      {UNIDAD_LABEL[insumo.unidad]}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 text-charcoal-400">{insumo.proveedorPrincipal?.nombre ?? insumo.proveedor ?? "—"}</td>
                   <td className="px-4 py-3">
                     {!insumo.activo ? (
