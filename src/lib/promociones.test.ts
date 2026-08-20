@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { generarSugerencias, descuentoMaximoSeguro, type ProductoCosteado } from "./promociones";
+import {
+  generarSugerencias,
+  descuentoMaximoSeguro,
+  evaluarMismoProducto,
+  generarPromosMismoProducto,
+  FORMATOS_MISMO_PRODUCTO,
+  type ProductoCosteado,
+} from "./promociones";
 
 /** Productos reales de La Mordida, con sus costos de agosto 2026. */
 const CLASICA: ProductoCosteado = { id: "cl", nombre: "La Clásica", precio: 20000, costo: 7258, categoria: "Hamburguesas" };
@@ -116,5 +123,71 @@ describe("descuentoMaximoSeguro", () => {
 
   it("sin precio no hay techo que calcular", () => {
     expect(descuentoMaximoSeguro(0, 0)).toBe(0);
+  });
+});
+
+describe("promociones del mismo producto", () => {
+  const formato = (id: string) => FORMATOS_MISMO_PRODUCTO.find((f) => f.id === id)!;
+
+  it("un 2x1 aguanta hasta 50% de costo, ni un punto más", () => {
+    // Es la aritmética entera del formato: entregas 2, cobras 1, así que el
+    // costo del par tiene que caber dentro de un solo precio.
+    const s = evaluarMismoProducto(MORDIDA, formato("2X1"));
+    expect(s.costoMaximoPct).toBe(50);
+  });
+
+  it("La Mordida sí aguanta un 2x1", () => {
+    // 30% de costo: $32.000 − 2×$9.617 = $12.766 y sigue dejando plata.
+    const s = evaluarMismoProducto(MORDIDA, formato("2X1"));
+    expect(s.viable).toBe(true);
+    expect(s.contribucion).toBe(32000 - 2 * 9617);
+    expect(s.holguraPuntos).toBeGreaterThan(0);
+  });
+
+  it("Triple Impacto NO aguanta un 2x1: cada venta pierde plata", () => {
+    // 58% de costo contra un techo de 50%. $28.000 − 2×$16.208 = −$4.416.
+    const s = evaluarMismoProducto(TRIPLE, formato("2X1"));
+    expect(s.viable).toBe(false);
+    expect(s.contribucion).toBeLessThan(0);
+    expect(s.holguraPuntos).toBeLessThan(0);
+    expect(s.advertencia).toMatch(/pierde plata/i);
+    expect(s.vecesMasVentas).toBe(Infinity);
+  });
+
+  it("el mismo producto que falla en 2x1 puede pasar en 3x2", () => {
+    // 3x2 exige costo bajo 67%, y el Triple está en 58%.
+    const dosPorUno = evaluarMismoProducto(TRIPLE, formato("2X1"));
+    const tresPorDos = evaluarMismoProducto(TRIPLE, formato("3X2"));
+    expect(dosPorUno.viable).toBe(false);
+    expect(tresPorDos.viable).toBe(true);
+    expect(tresPorDos.costoMaximoPct).toBeCloseTo(66.67, 1);
+  });
+
+  it("la segunda a mitad de precio es el formato más permisivo de los de dos", () => {
+    expect(evaluarMismoProducto(MORDIDA, formato("2DA_MITAD")).costoMaximoPct).toBe(75);
+    expect(evaluarMismoProducto(MORDIDA, formato("2DA_30")).costoMaximoPct).toBe(85);
+  });
+
+  it("avisa cuando la promo deja menos que vender una sola", () => {
+    // La Clásica en 2x1: $20.000 − 2×$7.258 = $5.484, contra $12.742 de una
+    // sola. No pierde plata, pero solo compensa si trae gente nueva.
+    const s = evaluarMismoProducto(CLASICA, formato("2X1"));
+    expect(s.viable).toBe(true);
+    expect(s.contribucion).toBeLessThan(s.contribucionUnaSola);
+    expect(s.advertencia).toMatch(/menos que vender una sola/i);
+  });
+
+  it("separa los dos escenarios igual que los combos", () => {
+    const s = evaluarMismoProducto(MORDIDA, formato("2X1"));
+    expect(s.perdidaSiYaLlevabaTodas).toBe(s.ahorro);
+    expect(s.gananciaSiSoloLlevabaUna).toBe(s.contribucion - s.contribucionUnaSola);
+  });
+
+  it("genera cada producto contra cada formato, mejores primero", () => {
+    const s = generarPromosMismoProducto([MORDIDA, TRIPLE]);
+    expect(s).toHaveLength(2 * FORMATOS_MISMO_PRODUCTO.length);
+    for (let i = 1; i < s.length; i++) {
+      expect(s[i - 1]!.contribucion).toBeGreaterThanOrEqual(s[i]!.contribucion);
+    }
   });
 });

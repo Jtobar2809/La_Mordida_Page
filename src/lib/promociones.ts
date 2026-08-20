@@ -174,6 +174,125 @@ export function generarSugerencias(
   return sugerencias.sort((a, b) => b.contribucion - a.contribucion);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PROMOCIONES DEL MISMO PRODUCTO (2x1, 3x2, la segunda a mitad)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Un formato "N unidades por el precio de M".
+ *
+ * Aquí la aritmética es más dura que en un combo, y por una razón que conviene
+ * ver de frente: en un combo el descuento se reparte entre productos de costos
+ * distintos, y las papas o la gaseosa —baratas y de alto valor percibido—
+ * amortiguan. En un 2x1 se entrega el MISMO producto caro dos veces, así que el
+ * costo se duplica mientras el ingreso se queda igual.
+ *
+ * De ahí sale el umbral: un formato aguanta si el costo del producto es menor
+ * que `pagadas / entregadas`. Un 2x1 exige costo por debajo del 50%; un 3x2,
+ * por debajo del 67%; la segunda a mitad, por debajo del 75%.
+ */
+export type FormatoMismoProducto = {
+  id: string;
+  etiqueta: string;
+  /** Cuántas se lleva el cliente. */
+  entregadas: number;
+  /** Cuántas paga, en unidades de precio. 1,5 = la segunda a mitad. */
+  pagadas: number;
+};
+
+export const FORMATOS_MISMO_PRODUCTO: FormatoMismoProducto[] = [
+  { id: "2X1", etiqueta: "2x1", entregadas: 2, pagadas: 1 },
+  { id: "3X2", etiqueta: "3x2", entregadas: 3, pagadas: 2 },
+  { id: "2DA_MITAD", etiqueta: "La segunda a mitad de precio", entregadas: 2, pagadas: 1.5 },
+  { id: "2DA_30", etiqueta: "La segunda con 30% de descuento", entregadas: 2, pagadas: 1.7 },
+  { id: "3X2_5", etiqueta: "3 por el precio de 2 y medio", entregadas: 3, pagadas: 2.5 },
+];
+
+export type SugerenciaMismoProducto = {
+  id: string;
+  producto: ProductoCosteado;
+  formato: FormatoMismoProducto;
+
+  precioSuelto: number;
+  precioPromo: number;
+  costo: number;
+  ahorro: number;
+
+  contribucion: number;
+  /** Lo que dejaría vender UNA sola al precio de siempre. */
+  contribucionUnaSola: number;
+  /** Escenario bueno: la persona venía por una y se lleva las del formato. */
+  gananciaSiSoloLlevabaUna: number;
+  /** Escenario malo: ya iba a llevar todas y solo le abarataste. */
+  perdidaSiYaLlevabaTodas: number;
+  vecesMasVentas: number;
+
+  /** Costo actual del producto sobre su precio. */
+  costoPct: number;
+  /** El máximo que aguanta ESTE formato: pagadas ÷ entregadas. */
+  costoMaximoPct: number;
+  /** Margen que sobra (o falta) hasta el umbral, en puntos porcentuales. */
+  holguraPuntos: number;
+
+  viable: boolean;
+  advertencia: string | null;
+};
+
+export function evaluarMismoProducto(
+  producto: ProductoCosteado,
+  formato: FormatoMismoProducto
+): SugerenciaMismoProducto {
+  const { entregadas, pagadas } = formato;
+
+  const precioSuelto = producto.precio * entregadas;
+  const precioPromo = redondearPrecio(producto.precio * pagadas);
+  const costo = producto.costo * entregadas;
+  const ahorro = precioSuelto - precioPromo;
+
+  const contribucion = precioPromo - costo;
+  const contribucionUnaSola = producto.precio - producto.costo;
+  const contribucionSuelta = precioSuelto - costo;
+
+  const costoPct = producto.precio > 0 ? (producto.costo / producto.precio) * 100 : 100;
+  const costoMaximoPct = (pagadas / entregadas) * 100;
+
+  const viable = contribucion > 0;
+
+  return {
+    id: `${producto.id}:${formato.id}`,
+    producto,
+    formato,
+    precioSuelto,
+    precioPromo,
+    costo,
+    ahorro,
+    contribucion,
+    contribucionUnaSola,
+    gananciaSiSoloLlevabaUna: contribucion - contribucionUnaSola,
+    perdidaSiYaLlevabaTodas: ahorro,
+    vecesMasVentas: contribucion > 0 ? contribucionSuelta / contribucion : Infinity,
+    costoPct,
+    costoMaximoPct,
+    holguraPuntos: costoMaximoPct - costoPct,
+    viable,
+    advertencia: !viable
+      ? `Un ${formato.etiqueta} entrega ${entregadas} y cobra ${pagadas}: con un costo del ${costoPct.toFixed(0)}% cada venta pierde plata. Este formato aguanta hasta ${costoMaximoPct.toFixed(0)}%.`
+      : contribucion < contribucionUnaSola
+        ? "Deja menos que vender una sola al precio normal: solo conviene si de verdad trae más gente."
+        : null,
+  };
+}
+
+/** Todas las promos del mismo producto, las mejores primero. */
+export function generarPromosMismoProducto(
+  productos: ProductoCosteado[],
+  formatos: FormatoMismoProducto[] = FORMATOS_MISMO_PRODUCTO
+): SugerenciaMismoProducto[] {
+  const todas: SugerenciaMismoProducto[] = [];
+  for (const p of productos) for (const f of formatos) todas.push(evaluarMismoProducto(p, f));
+  return todas.sort((a, b) => b.contribucion - a.contribucion);
+}
+
 export const ETIQUETA_TIPO: Record<TipoPromo, string> = {
   COMPLETO: "Plato + acompañamiento + bebida",
   PLATO_BEBIDA: "Plato + bebida",

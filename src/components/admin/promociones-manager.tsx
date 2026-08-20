@@ -13,7 +13,15 @@ import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { crearComboDesdeSugerencia } from "@/actions/admin/promociones";
 import { formatCosto } from "@/lib/costos";
-import { generarSugerencias, ETIQUETA_TIPO, type ProductoCosteado, type Sugerencia, type TipoPromo } from "@/lib/promociones";
+import {
+  generarSugerencias,
+  generarPromosMismoProducto,
+  ETIQUETA_TIPO,
+  type ProductoCosteado,
+  type Sugerencia,
+  type TipoPromo,
+  type SugerenciaMismoProducto,
+} from "@/lib/promociones";
 
 const FILTROS: { valor: TipoPromo | "TODOS"; etiqueta: string }[] = [
   { valor: "TODOS", etiqueta: "Todos" },
@@ -32,6 +40,7 @@ export function PromocionesManager({
   categorias: { id: string; name: string }[];
 }) {
   const router = useRouter();
+  const [seccion, setSeccion] = React.useState<"COMBOS" | "MISMO">("COMBOS");
   // 15% es donde aterrizan los combos que funcionan según la práctica del
   // sector: suficiente para que se sienta oferta, poco para no regalar margen.
   const [descuento, setDescuento] = React.useState(15);
@@ -43,6 +52,9 @@ export function PromocionesManager({
     () => generarSugerencias(productos, descuento / 100),
     [productos, descuento]
   );
+
+  // Antes del return temprano: un hook no puede quedar detrás de un `if`.
+  const mismoProducto = React.useMemo(() => generarPromosMismoProducto(productos), [productos]);
 
   const visibles = sugerencias
     .filter((s) => (filtro === "TODOS" ? true : s.tipo === filtro))
@@ -67,6 +79,26 @@ export function PromocionesManager({
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2 text-sm">
+        {([["COMBOS", "Combos de varios productos"], ["MISMO", "2x1, 3x2 y similares"]] as const).map(([v, etiqueta]) => (
+          <button
+            key={v}
+            onClick={() => setSeccion(v)}
+            className={
+              seccion === v
+                ? "rounded-full bg-charcoal-800 px-4 py-2 font-medium text-white dark:bg-cream dark:text-charcoal-900"
+                : "rounded-full px-4 py-2 font-medium text-charcoal-500 hover:bg-charcoal-100 dark:text-charcoal-300 dark:hover:bg-charcoal-700/50"
+            }
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+
+      {seccion === "MISMO" && <TablaMismoProducto sugerencias={mismoProducto} />}
+
+      {seccion === "COMBOS" && (
+      <>
       {/* ── La regla que evita el desastre ──────────────────────────────── */}
       {mejor && (
         <div className="rounded-2xl border border-charcoal-100 bg-white p-5 dark:border-charcoal-700 dark:bg-charcoal-800">
@@ -247,6 +279,9 @@ export function PromocionesManager({
         </div>
       </div>
 
+      </>
+      )}
+
       <Modal open={creando !== null} onClose={() => setCreando(null)} title="Crear este combo">
         {creando && (
           <CrearComboForm
@@ -362,5 +397,144 @@ function CrearComboForm({
         {loading ? "Creando..." : "Crear combo"}
       </Button>
     </form>
+  );
+}
+
+/**
+ * Las promos del mismo producto (2x1, 3x2, la segunda a mitad).
+ *
+ * La columna que manda aquí no es el precio: es la holgura entre el costo del
+ * producto y el techo que aguanta el formato. Un 2x1 entrega dos y cobra uno,
+ * así que solo cabe si el costo está por debajo del 50% — y esa comparación,
+ * puesta al lado, explica sola por qué el mismo formato sirve para una
+ * hamburguesa y arruina la de al lado.
+ */
+function TablaMismoProducto({ sugerencias }: { sugerencias: SugerenciaMismoProducto[] }) {
+  const [soloViables, setSoloViables] = React.useState(true);
+  const visibles = sugerencias.filter((s) => (soloViables ? s.viable : true));
+  const descartadas = sugerencias.length - sugerencias.filter((s) => s.viable).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-xl bg-charcoal-50 p-4 text-sm text-charcoal-500 dark:bg-charcoal-900/40 dark:text-charcoal-300">
+        <Info className="mt-0.5 h-4 w-4 shrink-0" />
+        <div>
+          <p>
+            <strong>Aquí la aritmética es más dura que en un combo.</strong> En un combo el descuento se reparte entre
+            productos de costos distintos, y las papas o la gaseosa —baratas y de alto valor percibido— amortiguan. En un
+            2x1 entregas el mismo producto caro dos veces: el costo se duplica y el ingreso se queda igual.
+          </p>
+          <p className="mt-1">
+            De ahí sale el techo de cada formato: un <strong>2x1</strong> solo cabe si tu costo está por debajo del 50%;
+            un <strong>3x2</strong>, del 67%; <strong>la segunda a mitad</strong>, del 75%.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-charcoal-400">
+          {visibles.length} de {sugerencias.length} combinaciones
+          {descartadas > 0 && ` · ${descartadas} pierden plata y están ocultas`}
+        </p>
+        <label className="flex items-center gap-2 text-sm text-charcoal-600 dark:text-charcoal-200">
+          <input
+            type="checkbox"
+            checked={soloViables}
+            onChange={(e) => setSoloViables(e.target.checked)}
+            className="h-4 w-4 accent-ember-600"
+          />
+          Ocultar las que pierden plata
+        </label>
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-charcoal-100 dark:border-charcoal-700">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-charcoal-50 text-xs uppercase tracking-wide text-charcoal-400 dark:bg-charcoal-800">
+            <tr>
+              <th className="px-4 py-3">Producto y formato</th>
+              <th className="px-4 py-3">Paga</th>
+              <th className="px-4 py-3">Te deja</th>
+              <th className="px-4 py-3">Tu costo vs. el techo</th>
+              <th className="px-4 py-3">Si solo llevaba una</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-charcoal-100 dark:divide-charcoal-700">
+            {visibles.map((s) => (
+              <tr key={s.id} className="bg-white dark:bg-charcoal-800">
+                <td className="px-4 py-3">
+                  <p className="font-medium text-charcoal-900 dark:text-cream">
+                    {s.formato.etiqueta} — {s.producto.nombre}
+                  </p>
+                  <p className="text-xs text-charcoal-400">
+                    Se lleva {s.formato.entregadas} · insumos {formatCosto(s.costo)}
+                    {s.advertencia && (
+                      <span className={s.viable ? " text-amber-600 dark:text-amber-400" : " text-red-600 dark:text-red-400"}>
+                        {" "}
+                        · {s.advertencia}
+                      </span>
+                    )}
+                  </p>
+                </td>
+                <td className="px-4 py-3 font-mono">
+                  <span className="font-semibold text-charcoal-900 dark:text-cream">{formatCosto(s.precioPromo)}</span>
+                  <span className="block text-xs text-charcoal-400 line-through">{formatCosto(s.precioSuelto)}</span>
+                </td>
+                <td className="px-4 py-3 font-mono">
+                  <span
+                    className={
+                      s.viable ? "text-charcoal-900 dark:text-cream" : "font-semibold text-red-600 dark:text-red-400"
+                    }
+                  >
+                    {formatCosto(s.contribucion)}
+                  </span>
+                  <span className="block text-xs text-charcoal-400">
+                    una sola deja {formatCosto(s.contribucionUnaSola)}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`font-mono ${
+                      s.holguraPuntos >= 0 ? "text-olive-600 dark:text-olive-400" : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {s.costoPct.toFixed(0)}% de {s.costoMaximoPct.toFixed(0)}%
+                  </span>
+                  <span className="block text-xs text-charcoal-400">
+                    {s.holguraPuntos >= 0
+                      ? `te sobran ${s.holguraPuntos.toFixed(0)} puntos`
+                      : `te faltan ${Math.abs(s.holguraPuntos).toFixed(0)} puntos`}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`font-mono ${
+                      s.gananciaSiSoloLlevabaUna >= 0
+                        ? "text-olive-600 dark:text-olive-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {s.gananciaSiSoloLlevabaUna >= 0 ? "+" : "−"}
+                    {formatCosto(Math.abs(s.gananciaSiSoloLlevabaUna))}
+                  </span>
+                  <span className="block text-xs text-charcoal-400">contra venderle una</span>
+                </td>
+              </tr>
+            ))}
+            {visibles.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center text-charcoal-400">
+                  Ningún formato del mismo producto sale a cuenta con tus costos actuales.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-charcoal-400">
+        Estas promos no se crean como producto porque no son un combo: son una regla de cobro. Se anuncian y se aplican
+        en caja al momento de vender.
+      </p>
+    </div>
   );
 }
