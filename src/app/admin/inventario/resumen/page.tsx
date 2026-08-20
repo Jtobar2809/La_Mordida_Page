@@ -3,7 +3,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { InventarioTabs } from "@/components/admin/inventario-tabs";
 import { ESTADOS_VENTA_CONFIRMADA, obtenerPerdidas } from "@/lib/inventario";
-import { formatCosto } from "@/lib/costos";
+import { formatCosto, costoDeMovimientos } from "@/lib/costos";
 
 export const dynamic = "force-dynamic";
 
@@ -114,12 +114,7 @@ export default async function AdminResumenPage({
   const ingresos = ventas._sum?.total ?? 0;
   const cantidadPedidos = ventas._count._all;
 
-  const cogs = movimientosVenta.reduce((sum, movimiento) => {
-    const costo =
-      movimiento.cantidad *
-      (movimiento.costoUnitario ?? movimiento.insumo.costoUnitario);
-    return movimiento.tipo === "ENTRADA" ? sum - costo : sum + costo;
-  }, 0);
+  const cogs = costoDeMovimientos(movimientosVenta);
 
   const margenBruto = ingresos - cogs;
 

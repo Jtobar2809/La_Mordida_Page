@@ -1,6 +1,7 @@
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ESTADOS_VENTA_CONFIRMADA, obtenerPerdidas } from "@/lib/inventario";
+import { costoDeMovimientos } from "@/lib/costos";
 
 /**
  * Estado de resultados de un mes.
@@ -92,10 +93,7 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
   const ventas = ventasAgg._sum?.total ?? 0;
   const pedidos = ventasAgg._count._all;
 
-  const costoVenta = movimientos.reduce((sum, m) => {
-    const costo = m.cantidad * (m.costoUnitario ?? m.insumo.costoUnitario);
-    return m.tipo === "ENTRADA" ? sum - costo : sum + costo;
-  }, 0);
+  const costoVenta = costoDeMovimientos(movimientos);
 
   const utilidadBruta = ventas - costoVenta;
 
@@ -149,6 +147,55 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
     comprasDelMes,
     variacionInventario: comprasDelMes - costoVenta,
   };
+}
+
+/**
+ * Los tramos de la cascada "de la venta a la utilidad".
+ *
+ * `rango` es [desde, hasta]: cada barra flota entre esos dos valores, y por eso
+ * puede cruzar el cero. Antes esto vivía dentro del componente apilando una
+ * base transparente, y una base no sabe bajar de cero: una utilidad negativa se
+ * dibujaba hacia arriba, con la misma forma que tendría una ganancia. Vive aquí
+ * para poder probarlo sin montar React.
+ */
+export type TramoCascada = {
+  nombre: string;
+  /** Firmado: negativo es plata que sale. Es lo que se muestra como etiqueta. */
+  monto: number;
+  rol: "entra" | "sale" | "resultado";
+  rango: [number, number];
+};
+
+export function construirCascada(d: {
+  ventas: number;
+  costoVenta: number;
+  utilidadBruta: number;
+  gastosFijos: number;
+  gastosDelMes: number;
+  mermas: number;
+  utilidadNeta: number;
+}): TramoCascada[] {
+  const pasos: TramoCascada[] = [
+    { nombre: "Ventas", monto: d.ventas, rol: "entra", rango: [0, d.ventas] },
+    { nombre: "Insumos", monto: -d.costoVenta, rol: "sale", rango: [d.ventas - d.costoVenta, d.ventas] },
+    { nombre: "Utilidad bruta", monto: d.utilidadBruta, rol: "resultado", rango: [0, d.utilidadBruta] },
+  ];
+
+  let corriendo = d.utilidadBruta;
+  for (const [nombre, monto] of [
+    ["Fijos", d.gastosFijos],
+    ["Gastos", d.gastosDelMes],
+    ["Mermas", d.mermas],
+  ] as const) {
+    // Una línea en cero no aporta nada y mete una barra invisible en el eje.
+    if (monto <= 0) continue;
+    const siguiente = corriendo - monto;
+    pasos.push({ nombre, monto: -monto, rol: "sale", rango: [siguiente, corriendo] });
+    corriendo = siguiente;
+  }
+
+  pasos.push({ nombre: "Utilidad neta", monto: d.utilidadNeta, rol: "resultado", rango: [0, d.utilidadNeta] });
+  return pasos;
 }
 
 export const ETIQUETA_GASTO: Record<string, string> = {

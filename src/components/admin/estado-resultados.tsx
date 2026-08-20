@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { TrendingUp, TrendingDown, Info } from "lucide-react";
 import { formatCosto } from "@/lib/costos";
-import type { EstadoResultados } from "@/lib/contabilidad";
+import { construirCascada, type TramoCascada, type EstadoResultados } from "@/lib/contabilidad";
 
 /**
  * Paleta validada con scripts/validate_palette.js (skill dataviz).
@@ -33,15 +33,6 @@ import type { EstadoResultados } from "@/lib/contabilidad";
 const ENTRA = "#12907C";
 const SALE = "#E85C2B";
 const NEUTRO_CLARO = "#4E4436";
-
-/**
- * `rango` es [desde, hasta]: Recharts dibuja la barra flotando entre esos dos
- * valores. Se usa en vez de apilar una base transparente porque la base no
- * sabe bajar de cero — y con una utilidad negativa, que es exactamente el caso
- * que hay que poder ver, la barra se dibujaba hacia arriba como si fuera
- * ganancia.
- */
-type Barra = { nombre: string; monto: number; rol: "entra" | "sale" | "resultado"; rango: [number, number] };
 
 export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
   const {
@@ -62,34 +53,17 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
     pedidos,
   } = datos;
 
-  // Cascada: cada barra flotante arranca donde terminó la anterior, así se ve
-  // cómo la venta se va consumiendo hasta la utilidad. `base` es la parte
-  // invisible que la empuja hacia arriba.
-  const cascada = React.useMemo<Barra[]>(() => {
-    const pasos: Barra[] = [];
-    pasos.push({ nombre: "Ventas", monto: ventas, rol: "entra", rango: [0, ventas] });
-    pasos.push({ nombre: "Insumos", monto: -costoVenta, rol: "sale", rango: [ventas - costoVenta, ventas] });
-    pasos.push({ nombre: "Utilidad bruta", monto: utilidadBruta, rol: "resultado", rango: [0, utilidadBruta] });
-
-    let corriendo = utilidadBruta;
-    for (const [nombre, monto] of [
-      ["Fijos", gastosFijos],
-      ["Gastos", gastosDelMes],
-      ["Mermas", mermas],
-    ] as const) {
-      if (monto <= 0) continue;
-      const siguiente = corriendo - monto;
-      pasos.push({ nombre, monto: -monto, rol: "sale", rango: [siguiente, corriendo] });
-      corriendo = siguiente;
-    }
-
-    pasos.push({ nombre: "Utilidad neta", monto: utilidadNeta, rol: "resultado", rango: [0, utilidadNeta] });
-    return pasos;
-  }, [ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta]);
+  // Los tramos los arma `construirCascada` en lib/contabilidad, aparte del
+  // componente: ahí se pueden probar sin montar React, y ahí vivía el bug que
+  // dibujaba una pérdida como si fuera ganancia.
+  const cascada = React.useMemo(
+    () => construirCascada({ ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta }),
+    [ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta]
+  );
 
   // Un resultado negativo se pinta como salida: una pérdida no es un subtotal
   // neutro, y dejarla en gris la hacía leer como si fuera plata ganada.
-  const colorDe = (b: Barra) =>
+  const colorDe = (b: TramoCascada) =>
     b.rol === "entra" ? ENTRA : b.rol === "sale" ? SALE : b.monto < 0 ? SALE : NEUTRO_CLARO;
   const enGanancia = utilidadNeta >= 0;
 
@@ -175,7 +149,7 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
               cursor={{ fill: "rgba(122,108,88,0.06)" }}
               contentStyle={{ borderRadius: 12, border: "1px solid #E8E3DC", fontSize: 13 }}
               formatter={(_v, _n, item) => {
-                const p = item?.payload as Barra;
+                const p = item?.payload as TramoCascada;
                 return [`${p.monto < 0 ? "−" : ""}${formatCosto(Math.abs(p.monto))}`, p.nombre];
               }}
               labelFormatter={() => ""}

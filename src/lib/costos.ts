@@ -100,6 +100,32 @@ export function costoDeProducto(producto: ProductoCosteable) {
   return propio + componentes;
 }
 
+/**
+ * Cuánto costó lo que de verdad se consumió, a partir de los movimientos de
+ * inventario ligados a ventas.
+ *
+ * Se restan las ENTRADA porque cancelar un pedido no borra su salida: crea una
+ * entrada que la compensa. Contando solo las salidas, la comida de un pedido
+ * cancelado quedaba sumada al costo de venta como si se hubiera consumido.
+ *
+ * Vive aquí y no en cada pantalla porque esta cuenta estaba copiada en cinco
+ * archivos, y así fue como nació ese bug: se arregló en uno y los otros
+ * siguieron mintiendo.
+ */
+export type MovimientoValorizable = {
+  tipo: string;
+  cantidad: number;
+  costoUnitario: number | null;
+  insumo: { costoUnitario: number };
+};
+
+export function costoDeMovimientos(movimientos: MovimientoValorizable[]) {
+  return movimientos.reduce((total, m) => {
+    const costo = m.cantidad * (m.costoUnitario ?? m.insumo.costoUnitario);
+    return m.tipo === "ENTRADA" ? total - costo : total + costo;
+  }, 0);
+}
+
 export const UNIDAD_LABEL: Record<string, string> = {
   GRAMOS: "g",
   KILOGRAMOS: "kg",

@@ -1,6 +1,7 @@
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
+import { costoDeMovimientos } from "@/lib/costos";
 
 /**
  * Conciliación: comparar fuentes que deberían decir lo mismo y señalar dónde no.
@@ -191,9 +192,6 @@ export async function obtenerConciliacion(anio: number, mes: number): Promise<Co
 
     insumos,
     totalComprado: compraItems.reduce((s, ci) => s + ci.cantidad * ci.costoUnitario, 0),
-    totalConsumido: movimientosInsumo.reduce((s, m) => {
-      const costo = m.cantidad * (m.costoUnitario ?? m.insumo.costoUnitario);
-      return m.tipo === "ENTRADA" ? s - costo : s + costo;
-    }, 0),
+    totalConsumido: costoDeMovimientos(movimientosInsumo),
   };
 }

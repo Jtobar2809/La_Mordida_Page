@@ -2,7 +2,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
-import { costoDeProducto } from "@/lib/costos";
+import { costoDeProducto, costoDeMovimientos } from "@/lib/costos";
 
 /**
  * Punto de equilibrio y reparto de costos fijos.
@@ -123,10 +123,7 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
 
   const ingresosReales = ventas._sum?.total ?? 0;
   const pedidosReales = ventas._count._all;
-  const cogsReal = movimientosVenta.reduce((sum, m) => {
-    const costo = m.cantidad * (m.costoUnitario ?? m.insumo.costoUnitario);
-    return m.tipo === "ENTRADA" ? sum - costo : sum + costo;
-  }, 0);
+  const cogsReal = costoDeMovimientos(movimientosVenta);
 
   // Margen: se prefiere lo que de verdad pasó. Solo si no hay ventas se recurre
   // a las recetas, y se dice de dónde salió para que nadie confunda una
