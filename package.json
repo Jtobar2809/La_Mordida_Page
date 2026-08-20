@@ -25,6 +25,7 @@
     "@auth/prisma-adapter": "2.7.4",
     "@hookform/resolvers": "3.10.0",
     "@prisma/client": "6.2.1",
+    "@sentry/nextjs": "^10.70.0",
     "barcode-detector": "^3.2.1",
     "bcryptjs": "2.4.3",
     "class-variance-authority": "0.7.1",

@@ -63,4 +63,29 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * El envoltorio de Sentry se aplica SOLO si hay DSN configurado.
+ *
+ * Sin esa condición, el plugin se metería en el build de todo el mundo —
+ * incluido el build de producción de hoy, que todavía no tiene cuenta de
+ * Sentry — a cambio de nada. Un despliegue roto por una herramienta que aún no
+ * se usa sería el peor resultado posible de agregar monitoreo.
+ *
+ * Cuando exista `SENTRY_DSN`, esto además sube los source maps (si hay
+ * `SENTRY_AUTH_TOKEN`) para que los errores lleguen con el código legible en
+ * vez del minificado.
+ */
+const conSentry = async (config) => {
+  if (!process.env.SENTRY_DSN) return config;
+  const { withSentryConfig } = await import("@sentry/nextjs");
+  return withSentryConfig(config, {
+    silent: true,
+    org: process.env.SENTRY_ORG,
+    project: process.env.SENTRY_PROJECT,
+    // Esconde los source maps del público aunque se suban a Sentry.
+    hideSourceMaps: true,
+    disableLogger: true,
+  });
+};
+
+export default await conSentry(nextConfig);

@@ -772,6 +772,25 @@ model Settings {
   value String
 }
 
+/// Contador de intentos por ventana de tiempo, para frenar el abuso de las
+/// acciones públicas: registro, recuperar contraseña y login.
+///
+/// Vive en Postgres y no en memoria porque en Vercel cada petición puede caer
+/// en una instancia distinta, y un contador en memoria se reinicia solo — o
+/// sea, no limita nada. Se usa la base que ya existe en vez de agregar Redis:
+/// una consulta más en tres endpoints que se llaman poco no se nota, y no hay
+/// otro proveedor ni otro secreto que mantener.
+model RateLimit {
+  /// Qué se está limitando y a quién: "registro:1.2.3.4", "reset:juan@x.com".
+  clave     String   @id
+  intentos  Int      @default(0)
+  /// Cuándo arrancó la ventana vigente. Al expirar, el contador vuelve a cero.
+  ventanaAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ventanaAt])
+}
+
 /// Un gasto que se paga todos los meses así no se venda nada: arriendo,
 /// servicios, los sueldos de nómina, el contador.
 ///

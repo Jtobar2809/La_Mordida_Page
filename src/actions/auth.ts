@@ -4,6 +4,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { nanoid } from "nanoid";
+import { consumirIntento, ipDelVisitante, mensajeDeEspera, LIMITES } from "@/lib/rate-limit";
 
 const registerSchema = z.object({
   name: z.string().min(2, "El nombre es muy corto"),
@@ -33,6 +34,13 @@ export async function registerUser(input: unknown): Promise<ActionResult> {
   }
   const { name, email, phone, password } = parsed.data;
 
+  // Por IP: sin esto un script crea cuentas basura sin tope, y cada una dispara
+  // un correo de bienvenida que cuesta plata y reputación de dominio.
+  const limite = await consumirIntento(`registro:${await ipDelVisitante()}`, LIMITES.registro.limite, LIMITES.registro.ventana);
+  if (!limite.permitido) {
+    return { success: false, error: `Demasiadas cuentas creadas desde aquí. ${mensajeDeEspera(limite.esperaSegundos)}` };
+  }
+
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return { success: false, error: "Ya existe una cuenta con este correo." };
@@ -55,6 +63,19 @@ const forgotSchema = z.object({ email: z.string().email() });
 export async function requestPasswordReset(input: unknown): Promise<ActionResult> {
   const parsed = forgotSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: "Correo inválido" };
+
+  // Dos frenos, porque uno solo no alcanza: por correo para que nadie pueda
+  // bombardear el buzón de una persona concreta, y por IP para que rotar
+  // direcciones de correo no sirva de nada.
+  //
+  // El mensaje de bloqueo es el mismo que el de éxito a propósito: decir
+  // "espera 30 minutos" solo cuando el correo existe delataría qué correos
+  // están registrados, que es justo lo que evita el silencio de más abajo.
+  const [porCorreo, porIp] = await Promise.all([
+    consumirIntento(`reset:${parsed.data.email}`, LIMITES.resetPorCorreo.limite, LIMITES.resetPorCorreo.ventana),
+    consumirIntento(`reset-ip:${await ipDelVisitante()}`, LIMITES.resetPorIp.limite, LIMITES.resetPorIp.ventana),
+  ]);
+  if (!porCorreo.permitido || !porIp.permitido) return { success: true };
 
   const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
   // No revelamos si el correo existe o no, por seguridad.
