@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   LabelList,
+  ReferenceLine,
 } from "recharts";
 import { TrendingUp, TrendingDown, Info } from "lucide-react";
 import { formatCosto } from "@/lib/costos";
@@ -33,7 +34,14 @@ const ENTRA = "#12907C";
 const SALE = "#E85C2B";
 const NEUTRO_CLARO = "#4E4436";
 
-type Barra = { nombre: string; valor: number; rol: "entra" | "sale" | "resultado"; base: number };
+/**
+ * `rango` es [desde, hasta]: Recharts dibuja la barra flotando entre esos dos
+ * valores. Se usa en vez de apilar una base transparente porque la base no
+ * sabe bajar de cero — y con una utilidad negativa, que es exactamente el caso
+ * que hay que poder ver, la barra se dibujaba hacia arriba como si fuera
+ * ganancia.
+ */
+type Barra = { nombre: string; monto: number; rol: "entra" | "sale" | "resultado"; rango: [number, number] };
 
 export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
   const {
@@ -59,9 +67,9 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
   // invisible que la empuja hacia arriba.
   const cascada = React.useMemo<Barra[]>(() => {
     const pasos: Barra[] = [];
-    pasos.push({ nombre: "Ventas", valor: ventas, rol: "entra", base: 0 });
-    pasos.push({ nombre: "Insumos", valor: costoVenta, rol: "sale", base: ventas - costoVenta });
-    pasos.push({ nombre: "Utilidad bruta", valor: Math.max(utilidadBruta, 0), rol: "resultado", base: 0 });
+    pasos.push({ nombre: "Ventas", monto: ventas, rol: "entra", rango: [0, ventas] });
+    pasos.push({ nombre: "Insumos", monto: -costoVenta, rol: "sale", rango: [ventas - costoVenta, ventas] });
+    pasos.push({ nombre: "Utilidad bruta", monto: utilidadBruta, rol: "resultado", rango: [0, utilidadBruta] });
 
     let corriendo = utilidadBruta;
     for (const [nombre, monto] of [
@@ -71,15 +79,18 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
     ] as const) {
       if (monto <= 0) continue;
       const siguiente = corriendo - monto;
-      pasos.push({ nombre, valor: monto, rol: "sale", base: Math.max(Math.min(corriendo, siguiente), 0) });
+      pasos.push({ nombre, monto: -monto, rol: "sale", rango: [siguiente, corriendo] });
       corriendo = siguiente;
     }
 
-    pasos.push({ nombre: "Utilidad neta", valor: Math.abs(utilidadNeta), rol: "resultado", base: utilidadNeta < 0 ? 0 : 0 });
+    pasos.push({ nombre: "Utilidad neta", monto: utilidadNeta, rol: "resultado", rango: [0, utilidadNeta] });
     return pasos;
   }, [ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta]);
 
-  const colorDe = (rol: Barra["rol"]) => (rol === "entra" ? ENTRA : rol === "sale" ? SALE : NEUTRO_CLARO);
+  // Un resultado negativo se pinta como salida: una pérdida no es un subtotal
+  // neutro, y dejarla en gris la hacía leer como si fuera plata ganada.
+  const colorDe = (b: Barra) =>
+    b.rol === "entra" ? ENTRA : b.rol === "sale" ? SALE : b.monto < 0 ? SALE : NEUTRO_CLARO;
   const enGanancia = utilidadNeta >= 0;
 
   if (ventas === 0 && costoVenta === 0) {
@@ -165,20 +176,19 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
               contentStyle={{ borderRadius: 12, border: "1px solid #E8E3DC", fontSize: 13 }}
               formatter={(_v, _n, item) => {
                 const p = item?.payload as Barra;
-                return [`${p.rol === "sale" ? "−" : ""}${formatCosto(p.valor)}`, p.nombre];
+                return [`${p.monto < 0 ? "−" : ""}${formatCosto(Math.abs(p.monto))}`, p.nombre];
               }}
               labelFormatter={() => ""}
             />
-            {/* Tramo invisible que levanta cada barra hasta donde va. */}
-            <Bar dataKey="base" stackId="c" fill="transparent" isAnimationActive={false} />
-            <Bar dataKey="valor" stackId="c" radius={[4, 4, 0, 0]} maxBarSize={64}>
+            <ReferenceLine y={0} stroke="#A99C88" />
+            <Bar dataKey="rango" radius={4} maxBarSize={64}>
               {cascada.map((b, i) => (
-                <Cell key={i} fill={colorDe(b.rol)} />
+                <Cell key={i} fill={colorDe(b)} />
               ))}
               <LabelList
-                dataKey="valor"
+                dataKey="monto"
                 position="top"
-                formatter={(v: number) => formatCosto(v)}
+                formatter={(v: number) => `${v < 0 ? "−" : ""}${formatCosto(Math.abs(v))}`}
                 style={{ fontSize: 11, fill: "#4E4436" }}
               />
             </Bar>
@@ -286,18 +296,30 @@ function Fila({
   destacado?: boolean;
   nota?: string;
 }) {
+  // El signo sale del valor, no solo del parámetro `signo`. Antes se anteponía
+  // "−" únicamente cuando la línea era un egreso declarado, así que una
+  // utilidad NEGATIVA —que no lleva ese parámetro— se imprimía en positivo: la
+  // tabla decía "$853.923" de utilidad cuando la realidad era una pérdida de
+  // esa cifra, y contradecía a la tarjeta de arriba.
+  const negativo = signo === "−" || valor < 0;
+
   return (
     <div className={`flex items-baseline justify-between gap-3 ${destacado ? "font-semibold" : ""}`}>
       <dt className={destacado ? "text-charcoal-900 dark:text-cream" : "text-charcoal-500 dark:text-charcoal-300"}>
         {etiqueta}
         {nota && <span className="ml-1.5 text-xs font-normal text-charcoal-400">({nota})</span>}
       </dt>
-      <dd
-        className="font-mono tabular-nums"
-        style={{ color: destacado ? (valor < 0 ? SALE : undefined) : undefined }}
-      >
-        <span className={destacado ? "text-charcoal-900 dark:text-cream" : "text-charcoal-600 dark:text-charcoal-200"}>
-          {signo === "−" ? "−" : ""}
+      <dd className="font-mono tabular-nums">
+        <span
+          className={
+            destacado && valor < 0
+              ? "text-red-600 dark:text-red-400"
+              : destacado
+                ? "text-charcoal-900 dark:text-cream"
+                : "text-charcoal-600 dark:text-charcoal-200"
+          }
+        >
+          {negativo ? "−" : ""}
           {formatCosto(Math.abs(valor))}
         </span>
       </dd>
