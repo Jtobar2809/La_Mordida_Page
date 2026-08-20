@@ -9,6 +9,7 @@ const TABS = [
   { href: "/admin/inventario/recetas", label: "Recetas" },
   { href: "/admin/inventario/costos", label: "Costos fijos" },
   { href: "/admin/inventario/produccion", label: "Producción" },
+  { href: "/admin/inventario/consumo", label: "Desechables" },
   { href: "/admin/inventario/proveedores", label: "Proveedores" },
   { href: "/admin/inventario/compras", label: "Compras" },
   { href: "/admin/inventario/mermas", label: "Mermas" },

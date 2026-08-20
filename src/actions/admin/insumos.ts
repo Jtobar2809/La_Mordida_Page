@@ -34,6 +34,7 @@ const insumoSchema = z.object({
     .optional()
     .transform((v) => (v && v.length > 0 ? new Date(v) : null)),
   esElaborado: z.boolean().default(false),
+  consumoManual: z.boolean().default(false),
   activo: z.boolean().default(true),
 });
 

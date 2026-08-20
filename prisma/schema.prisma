@@ -217,6 +217,12 @@ model Insumo {
   // unidad", lo que obligaba a pesar en fracciones imposibles; ahora se anotan
   // los pesos reales de la olla y el sistema divide por el rendimiento.
   rendimiento          Float              @default(1)
+  /// Se descuenta a mano, no por receta. Es el caso de las bolsas, el papel y
+  /// los desechables: no se pueden meter en la receta de una hamburguesa porque
+  /// al momento de cocinarla nadie sabe si es para llevar o para comer en el
+  /// sitio, y una que se come en la mesa no usa bolsa. Sin este descuento
+  /// manual, esos insumos no bajarían nunca.
+  consumoManual        Boolean            @default(false)
   proveedor            String?
   proveedorPrincipalId String?
   fechaVencimiento     DateTime?

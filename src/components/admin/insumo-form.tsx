@@ -40,6 +40,7 @@ export function InsumoForm({
     proveedorPrincipalId: insumo?.proveedorPrincipalId ?? "",
     fechaVencimiento: insumo?.fechaVencimiento ? new Date(insumo.fechaVencimiento).toISOString().slice(0, 10) : "",
     esElaborado: insumo?.esElaborado ?? false,
+    consumoManual: insumo?.consumoManual ?? false,
     activo: insumo?.activo ?? true,
   });
   const [loading, setLoading] = React.useState(false);
@@ -177,6 +178,21 @@ export function InsumoForm({
         <span>
           Es un insumo elaborado (se prepara combinando otros insumos, ej. salsas o mezclas)
           <span className="block text-xs text-charcoal-400">Podrás definir su composición después de guardar, desde el botón «Composición» en la tabla.</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={form.consumoManual}
+          onChange={(e) => setForm({ ...form, consumoManual: e.target.checked })}
+          className="mt-0.5 h-4 w-4 accent-ember-600"
+        />
+        <span>
+          Se descuenta a mano (bolsas, papel, desechables)
+          <span className="block text-xs text-charcoal-400">
+            Para lo que no puede ir en una receta porque no depende del plato sino de si el pedido es para llevar. Aparece
+            en la pestaña «Desechables» para descontarlo por lote.
+          </span>
         </span>
       </label>
       {insumo && (
