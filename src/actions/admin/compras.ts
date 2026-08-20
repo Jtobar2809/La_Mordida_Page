@@ -24,8 +24,24 @@ const compraItemSchema = z.object({
 const compraSchema = z.object({
   proveedorId: z.string().min(1, "Elige un proveedor"),
   notas: z.string().optional(),
+  // Opcional: sin fecha la compra queda con la de hoy. Se acepta para poder
+  // registrar el domingo lo que se compró el sábado sin que caiga en el día
+  // equivocado — y con eso, en el mes equivocado si se cruza fin de mes.
+  fecha: z.string().optional(),
   items: z.array(compraItemSchema).min(1, "Agrega al menos un insumo a la compra"),
 });
+
+/**
+ * "2026-08-20" de un <input type="date"> se interpretaría como medianoche UTC,
+ * que en Colombia (UTC-5) cae el día anterior. Se ancla al mediodía local.
+ */
+function fechaLocal(iso?: string) {
+  if (!iso) return undefined;
+  const [anio, mes, dia] = iso.split("-").map(Number);
+  if (!anio || !mes || !dia) return undefined;
+  const d = new Date(anio, mes - 1, dia, 12, 0, 0);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
 
 /**
  * Registra una compra completa (proveedor + líneas de insumo) en una sola
@@ -49,7 +65,7 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
   const parsed = compraSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
-  const { proveedorId, notas, items } = parsed.data;
+  const { proveedorId, notas, items, fecha } = parsed.data;
 
   const insumoIds = [...new Set(items.map((i) => i.insumoId))];
   const insumosExistentes = await prisma.insumo.count({ where: { id: { in: insumoIds } } });
@@ -67,6 +83,7 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
           proveedorId,
           notas,
           total,
+          ...(fechaLocal(fecha) ? { fecha: fechaLocal(fecha) } : {}),
           createdById: userId,
           items: { create: items.map((i) => ({ insumoId: i.insumoId, cantidad: i.cantidad, costoUnitario: i.costoUnitario })) },
         },

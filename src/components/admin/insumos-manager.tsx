@@ -3,13 +3,14 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, ArrowUpDown, TriangleAlert, CalendarClock, FlaskConical } from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowUpDown, TriangleAlert, CalendarClock, FlaskConical, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { InsumoForm } from "@/components/admin/insumo-form";
 import { MovimientoForm } from "@/components/admin/movimiento-form";
 import { ComposicionManager } from "@/components/admin/composicion-manager";
+import { CompraRapidaForm } from "@/components/admin/compra-rapida-form";
 import { deleteInsumo } from "@/actions/admin/insumos";
 import { UNIDAD_LABEL, formatCosto, redondearCantidad } from "@/lib/costos";
 import type { Insumo, Proveedor, InsumoComponente } from "@prisma/client";
@@ -25,6 +26,7 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
   const [movingStock, setMovingStock] = React.useState<Pick<Insumo, "id" | "nombre" | "unidad" | "stockActual"> | null>(null);
   const [movingStockIsInitial, setMovingStockIsInitial] = React.useState(false);
   const [composingFor, setComposingFor] = React.useState<InsumoConProveedor | null>(null);
+  const [comprandoFor, setComprandoFor] = React.useState<InsumoConProveedor | null>(null);
 
   const bajoStock = insumos.filter((i) => i.activo && i.stockActual <= i.stockMinimo);
   const enTres = Date.now() + 3 * 24 * 60 * 60 * 1000;
@@ -127,6 +129,9 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
                           <FlaskConical className="h-4 w-4" />
                         </Button>
                       )}
+                      <Button size="icon" variant="ghost" onClick={() => setComprandoFor(insumo)} aria-label="Registrar compra">
+                        <ShoppingCart className="h-4 w-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => { setMovingStock(insumo); setMovingStockIsInitial(false); }} aria-label="Registrar movimiento">
                         <ArrowUpDown className="h-4 w-4" />
                       </Button>
@@ -185,6 +190,23 @@ export function InsumosManager({ insumos, proveedores }: { insumos: InsumoConPro
             onDone={() => {
               setMovingStock(null);
               setMovingStockIsInitial(false);
+              router.refresh();
+            }}
+          />
+        )}
+      </Modal>
+
+      <Modal
+        open={comprandoFor !== null}
+        onClose={() => setComprandoFor(null)}
+        title={`Registrar compra — ${comprandoFor?.nombre ?? ""}`}
+      >
+        {comprandoFor && (
+          <CompraRapidaForm
+            insumo={comprandoFor}
+            proveedores={proveedores}
+            onDone={() => {
+              setComprandoFor(null);
               router.refresh();
             }}
           />
