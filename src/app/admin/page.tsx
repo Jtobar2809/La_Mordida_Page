@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/admin/stat-card";
 import { SalesChart } from "@/components/admin/sales-chart";
 import { TopProductsChart } from "@/components/admin/top-products-chart";
+import { EquilibrioPanel } from "@/components/admin/equilibrio-panel";
 import { formatCOP } from "@/lib/utils";
 import { EXCLUIR_CLIENTE_MOSTRADOR } from "@/lib/caja";
+import { obtenerPanoramaOperacion } from "@/lib/operacion";
 import { DollarSign, Users, Receipt, Stamp, TrendingUp, Gift } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +25,7 @@ export default async function AdminDashboardPage() {
     ordersLast14Days,
     topProductsRaw,
     frequentCustomers,
+    panorama,
   ] = await Promise.all([
     prisma.order.aggregate({
       where: { status: { not: "CANCELADO" }, createdAt: { gte: startOfMonth } },
@@ -30,7 +33,11 @@ export default async function AdminDashboardPage() {
       _avg: { total: true },
       _count: true,
     }),
-    prisma.order.count({ where: { createdAt: { gte: startOfMonth } } }),
+    // Sin los cancelados, igual que "Ventas del mes" y "Ticket promedio". Antes
+    // los contaba, así que las tarjetas no cuadraban entre sí: 3 pedidos y
+    // $80.000 daban un ticket de $26.667, pero la tarjeta mostraba $40.000
+    // porque el promedio sí excluía el cancelado.
+    prisma.order.count({ where: { status: { not: "CANCELADO" }, createdAt: { gte: startOfMonth } } }),
     prisma.user.count({ where: { role: "CLIENTE", createdAt: { gte: startOfMonth }, ...EXCLUIR_CLIENTE_MOSTRADOR } }),
     prisma.stampQR.count({ where: { status: "RECLAMADO" } }),
     prisma.stampCard.count({ where: { rewardReady: true } }),
@@ -49,6 +56,9 @@ export default async function AdminDashboardPage() {
       // de personas distintas y aparecería como el cliente más frecuente.
       where: { role: "CLIENTE", orders: { some: {} }, ...EXCLUIR_CLIENTE_MOSTRADOR },
     }),
+    // La misma fuente que usa Inventario › Costos fijos, para que las dos
+    // pantallas no puedan mostrar puntos de equilibrio distintos.
+    obtenerPanoramaOperacion(),
   ]);
 
   const productIds = topProductsRaw.map((p) => p.productId);
@@ -88,6 +98,8 @@ export default async function AdminDashboardPage() {
         <StatCard label="Recompensas por entregar" value={String(rewardsReadyCount)} icon={Gift} accent="olive" />
         <StatCard label="Clientes frecuentes" value={String(frequentCustomers)} icon={Users} />
       </div>
+
+      <EquilibrioPanel panorama={panorama} ventasDelMes={salesAgg._sum.total ?? 0} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="rounded-2xl border border-charcoal-100 bg-white p-5 dark:border-charcoal-700 dark:bg-charcoal-800 lg:col-span-2">
