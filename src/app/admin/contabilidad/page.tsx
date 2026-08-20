@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { EstadoResultadosView } from "@/components/admin/estado-resultados";
 import { GastosManager } from "@/components/admin/gastos-manager";
+import { ContabilidadTabs } from "@/components/admin/contabilidad-tabs";
 import { obtenerEstadoResultados, MESES } from "@/lib/contabilidad";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,10 @@ export default async function AdminContabilidadPage({
           </p>
         </div>
 
+        <ContabilidadTabs anio={anio} mes={mes} />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <nav className="flex flex-wrap gap-2 text-sm">
           {opciones.map((o) => {
             const activo = o.anio === anio && o.mes === mes;
