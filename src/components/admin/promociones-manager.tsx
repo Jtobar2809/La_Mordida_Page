@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
-import { crearComboDesdeSugerencia } from "@/actions/admin/promociones";
+import { crearComboDesdeSugerencia, activarPromocion, desactivarPromocion } from "@/actions/admin/promociones";
 import { formatCosto } from "@/lib/costos";
 import {
   generarSugerencias,
@@ -30,14 +30,25 @@ const FILTROS: { valor: TipoPromo | "TODOS"; etiqueta: string }[] = [
   { valor: "DOS_PLATOS", etiqueta: "Dos platos" },
 ];
 
+export type ReglaVigente = {
+  id: string;
+  nombre: string;
+  entregadas: number;
+  pagadas: number;
+  hasta: Date | null;
+  producto: { name: string };
+};
+
 export function PromocionesManager({
   productos,
   sinCosto,
   categorias,
+  reglas,
 }: {
   productos: ProductoCosteado[];
   sinCosto: string[];
   categorias: { id: string; name: string }[];
+  reglas: ReglaVigente[];
 }) {
   const router = useRouter();
   const [seccion, setSeccion] = React.useState<"COMBOS" | "MISMO">("COMBOS");
@@ -95,7 +106,7 @@ export function PromocionesManager({
         ))}
       </div>
 
-      {seccion === "MISMO" && <TablaMismoProducto sugerencias={mismoProducto} />}
+      {seccion === "MISMO" && <TablaMismoProducto sugerencias={mismoProducto} reglas={reglas} />}
 
       {seccion === "COMBOS" && (
       <>
@@ -409,8 +420,41 @@ function CrearComboForm({
  * puesta al lado, explica sola por qué el mismo formato sirve para una
  * hamburguesa y arruina la de al lado.
  */
-function TablaMismoProducto({ sugerencias }: { sugerencias: SugerenciaMismoProducto[] }) {
+function TablaMismoProducto({
+  sugerencias,
+  reglas,
+}: {
+  sugerencias: SugerenciaMismoProducto[];
+  reglas: ReglaVigente[];
+}) {
+  const router = useRouter();
   const [soloViables, setSoloViables] = React.useState(true);
+  const [activando, setActivando] = React.useState<string | null>(null);
+
+  // Una promo ya vigente se reconoce por producto + formato exacto.
+  const claveVigente = new Set(reglas.map((r) => `${r.producto.name}|${r.entregadas}|${r.pagadas}`));
+
+  const activar = async (s: SugerenciaMismoProducto) => {
+    setActivando(s.id);
+    const result = await activarPromocion({
+      productId: s.producto.id,
+      nombre: `${s.formato.etiqueta} — ${s.producto.nombre}`,
+      entregadas: s.formato.entregadas,
+      pagadas: s.formato.pagadas,
+    });
+    setActivando(null);
+    if (!result.success) return toast.error(result.error);
+    toast.success("Promoción activa — la caja y la web ya la aplican solas");
+    router.refresh();
+  };
+
+  const desactivar = async (id: string, nombre: string) => {
+    if (!confirm(`¿Quitar "${nombre}"? Dejará de aplicarse al cobrar.`)) return;
+    const result = await desactivarPromocion(id);
+    if (!result.success) return toast.error(result.error);
+    toast.success("Promoción desactivada");
+    router.refresh();
+  };
   const visibles = sugerencias.filter((s) => (soloViables ? s.viable : true));
   const descartadas = sugerencias.length - sugerencias.filter((s) => s.viable).length;
 
@@ -456,6 +500,7 @@ function TablaMismoProducto({ sugerencias }: { sugerencias: SugerenciaMismoProdu
               <th className="px-4 py-3">Te deja</th>
               <th className="px-4 py-3">Tu costo vs. el techo</th>
               <th className="px-4 py-3">Si solo llevaba una</th>
+              <th className="px-4 py-3 text-right">Activar</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-charcoal-100 dark:divide-charcoal-700">
@@ -518,11 +563,24 @@ function TablaMismoProducto({ sugerencias }: { sugerencias: SugerenciaMismoProdu
                   </span>
                   <span className="block text-xs text-charcoal-400">contra venderle una</span>
                 </td>
+                <td className="px-4 py-3 text-right">
+                  {claveVigente.has(`${s.producto.nombre}|${s.formato.entregadas}|${s.formato.pagadas}`) ? (
+                    <Badge variant="olive">Activa</Badge>
+                  ) : s.viable ? (
+                    <Button size="sm" variant="ghost" onClick={() => activar(s)} disabled={activando === s.id}>
+                      {activando === s.id ? "..." : "Activar"}
+                    </Button>
+                  ) : (
+                    <Badge variant="outline" className="border-red-500 text-red-600 dark:text-red-400">
+                      No
+                    </Badge>
+                  )}
+                </td>
               </tr>
             ))}
             {visibles.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-charcoal-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-charcoal-400">
                   Ningún formato del mismo producto sale a cuenta con tus costos actuales.
                 </td>
               </tr>
@@ -531,9 +589,37 @@ function TablaMismoProducto({ sugerencias }: { sugerencias: SugerenciaMismoProdu
         </table>
       </div>
 
+      {reglas.length > 0 && (
+        <div className="rounded-2xl border border-olive-300 bg-olive-50 p-4 dark:border-olive-700 dark:bg-olive-900/20">
+          <h3 className="mb-2 font-display text-base text-olive-900 dark:text-olive-200">
+            APLICÁNDOSE AHORA MISMO ({reglas.length})
+          </h3>
+          <div className="space-y-1.5">
+            {reglas.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-olive-900 dark:text-olive-200">
+                  {r.nombre}
+                  {r.hasta && (
+                    <span className="ml-2 text-xs opacity-70">
+                      hasta el {new Date(r.hasta).toLocaleDateString("es-CO")}
+                    </span>
+                  )}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => desactivar(r.id, r.nombre)}>
+                  Quitar
+                </Button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-olive-800/80 dark:text-olive-300/80">
+            La caja, el pedido manual y el checkout de la web las aplican solos al cobrar. El descuento sale sobre el
+            precio base: si a una hamburguesa del 2x1 le agregan queso, el queso se cobra.
+          </p>
+        </div>
+      )}
+
       <p className="text-xs text-charcoal-400">
-        Estas promos no se crean como producto porque no son un combo: son una regla de cobro. Se anuncian y se aplican
-        en caja al momento de vender.
+        Estas promos no se crean como producto porque no son un combo: son una regla de cobro que se aplica al vender.
       </p>
     </div>
   );

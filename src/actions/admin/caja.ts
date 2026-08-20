@@ -250,7 +250,12 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
   const pricing = await priceOrderItems(items, { requireAvailable: false });
   if (!pricing.ok) return { success: false, error: pricing.error };
 
-  const { items: lineas, subtotal } = pricing;
+  const { items: lineas, subtotal, descuentoPromos } = pricing;
+
+  // El descuento manual que escribe la cajera se suma al automático de las
+  // promociones vigentes. Se topa contra el subtotal para que la suma de los
+  // dos no pueda dejar un total negativo.
+  const descuentoTotal = Math.min(descuento + descuentoPromos, subtotal);
 
   if (descuento > subtotal) {
     return { success: false, error: "El descuento no puede superar el subtotal." };
@@ -258,7 +263,7 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
 
   const settings = await getSettings();
   const taxRate = Number(settings.taxRate) || 0;
-  const base = subtotal - descuento;
+  const base = subtotal - descuentoTotal;
   const tax = Math.floor((base * taxRate) / 100);
   const total = base + tax;
 
@@ -302,7 +307,11 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
             subtotal,
             deliveryFee: 0,
             tax,
-            discount: descuento,
+            // El combinado, no solo el manual: si guardara `descuento` a secas,
+            // el pedido diría que se cobró más de lo que de verdad entró y el
+            // arqueo de caja cerraría con un sobrante fantasma cada vez que
+            // alguien usara una promoción.
+            discount: descuentoTotal,
             total,
             pointsEarned: 0,
             whatsappSent: false,

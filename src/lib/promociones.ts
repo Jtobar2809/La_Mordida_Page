@@ -293,6 +293,103 @@ export function generarPromosMismoProducto(
   return todas.sort((a, b) => b.contribucion - a.contribucion);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// APLICACIÓN AL COBRAR
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ReglaAplicable = {
+  id: string;
+  productId: string;
+  nombre: string;
+  entregadas: number;
+  pagadas: number;
+};
+
+export type PromoAplicada = {
+  reglaId: string;
+  nombre: string;
+  productId: string;
+  /** Cuántas unidades del producto había en total en el pedido. */
+  unidades: number;
+  /** Cuántas veces se completó el formato. */
+  veces: number;
+  descuento: number;
+};
+
+/**
+ * Cuánto se descuenta por las promociones de un pedido.
+ *
+ * Dos reglas que no son obvias y cambian la plata:
+ *
+ * 1. **Se agrupa por producto, no por línea.** Dos líneas de una Mordida cada
+ *    una son dos Mordidas: si el 2x1 solo mirara dentro de una línea, bastaría
+ *    con pedirlas por separado para no recibir la promoción — o al revés, el
+ *    cliente pediría dos veces y se sentiría estafado.
+ *
+ * 2. **Aplica sobre el precio base, nunca sobre los extras.** Si en un 2x1 a
+ *    una hamburguesa le agregan queso, el queso se cobra. Regalar los extras
+ *    convierte una promoción calculada en una pérdida imposible de prever, que
+ *    es exactamente lo que este módulo existe para evitar.
+ *
+ * El resto es la fórmula estándar: cuántas veces cabe el formato completo, y lo
+ * que sobra se cobra al precio de siempre. En un 2x1, pedir 5 paga 3.
+ */
+export function calcularDescuentoPromos(
+  lineas: { productId: string; cantidad: number; precioUnitario: number }[],
+  reglas: ReglaAplicable[]
+): { descuento: number; aplicadas: PromoAplicada[] } {
+  const unidadesPorProducto = new Map<string, { cantidad: number; precio: number }>();
+  for (const l of lineas) {
+    const actual = unidadesPorProducto.get(l.productId);
+    if (actual) actual.cantidad += l.cantidad;
+    else unidadesPorProducto.set(l.productId, { cantidad: l.cantidad, precio: l.precioUnitario });
+  }
+
+  const aplicadas: PromoAplicada[] = [];
+  let descuento = 0;
+
+  // Si un producto tuviera dos reglas activas se aplica la que más favorece al
+  // cliente: cobrar la menos generosa después de haber anunciado la otra es la
+  // clase de sorpresa que hace que la gente no vuelva.
+  const mejorPorProducto = new Map<string, ReglaAplicable>();
+  for (const r of reglas) {
+    if (r.entregadas <= 0 || r.pagadas < 0 || r.pagadas >= r.entregadas) continue;
+    const actual = mejorPorProducto.get(r.productId);
+    if (!actual || r.pagadas / r.entregadas < actual.pagadas / actual.entregadas) {
+      mejorPorProducto.set(r.productId, r);
+    }
+  }
+
+  for (const [productId, { cantidad, precio }] of unidadesPorProducto) {
+    const regla = mejorPorProducto.get(productId);
+    if (!regla) continue;
+
+    const veces = Math.floor(cantidad / regla.entregadas);
+    if (veces === 0) continue;
+
+    const resto = cantidad % regla.entregadas;
+    const unidadesCobradas = veces * regla.pagadas + resto;
+    const ahorro = Math.round((cantidad - unidadesCobradas) * precio);
+    if (ahorro <= 0) continue;
+
+    descuento += ahorro;
+    aplicadas.push({ reglaId: regla.id, nombre: regla.nombre, productId, unidades: cantidad, veces, descuento: ahorro });
+  }
+
+  return { descuento, aplicadas };
+}
+
+/** Una regla rige hoy si está activa y la fecha cae dentro de su vigencia. */
+export function reglaVigente(
+  r: { activa: boolean; desde: Date | null; hasta: Date | null },
+  ahora = new Date()
+) {
+  if (!r.activa) return false;
+  if (r.desde && ahora < r.desde) return false;
+  if (r.hasta && ahora > r.hasta) return false;
+  return true;
+}
+
 export const ETIQUETA_TIPO: Record<TipoPromo, string> = {
   COMPLETO: "Plato + acompañamiento + bebida",
   PLATO_BEBIDA: "Plato + bebida",

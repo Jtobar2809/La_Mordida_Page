@@ -6,7 +6,7 @@ import type { ProductoCosteado } from "@/lib/promociones";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPromocionesPage() {
-  const [productos, categorias] = await Promise.all([
+  const [productos, categorias, reglas] = await Promise.all([
     prisma.product.findMany({
       // Los combos que ya existen quedan fuera: un combo no puede contener otro.
       where: { available: true, esCombo: false },
@@ -17,6 +17,11 @@ export default async function AdminPromocionesPage() {
       orderBy: { name: "asc" },
     }),
     prisma.category.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.promocionRegla.findMany({
+      where: { activa: true },
+      include: { producto: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   // Sin receta no hay costo, y sin costo el producto aparecería con margen del
@@ -44,7 +49,7 @@ export default async function AdminPromocionesPage() {
         </p>
       </div>
 
-      <PromocionesManager productos={costeados} sinCosto={sinCosto} categorias={categorias} />
+      <PromocionesManager productos={costeados} sinCosto={sinCosto} categorias={categorias} reglas={reglas} />
     </div>
   );
 }

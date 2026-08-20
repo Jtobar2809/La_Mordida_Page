@@ -71,7 +71,7 @@ export async function createOrder(
   );
   if (!pricing.ok) return { success: false, error: pricing.error };
 
-  const { items: pricedItems, subtotal } = pricing;
+  const { items: pricedItems, subtotal, descuentoPromos } = pricing;
 
   // Un cupón que no aplica ya no se ignora en silencio: antes el pedido salía
   // igual a precio completo y el cliente creía haber usado su descuento.
@@ -113,6 +113,12 @@ export async function createOrder(
     discount = Math.min(discount, subtotal);
     appliedCoupon = coupon.code;
   }
+
+  // Las promociones automáticas (2x1, 3x2) se suman al descuento del cupón: son
+  // dos rebajas distintas sobre el mismo pedido y ambas salen del subtotal.
+  // Se topa contra el subtotal para que un cupón grande sobre un pedido ya
+  // promocionado no pueda dejar un total negativo.
+  discount = Math.min(discount + descuentoPromos, subtotal);
 
   const deliveryFee = deliveryType === "DOMICILIO" ? Number(settings.deliveryFee) : 0;
   const taxRate = Number(settings.taxRate) || 0;

@@ -137,10 +137,41 @@ model Product {
   recetaItems RecetaItem[]
   comboItems  ComboItem[]    @relation("ComboContiene")
   enCombos    ComboItem[]    @relation("ProductoEnCombo")
+  promociones PromocionRegla[]
 
   @@index([categoryId])
   @@index([featured])
   @@index([available])
+}
+
+/// Una regla de cobro del tipo "2x1", "3x2" o "la segunda a mitad".
+///
+/// No es un producto: un 2x1 no se pone en la carta con precio propio, se
+/// anuncia y se aplica al momento de cobrar. Por eso vive aparte de `Product` y
+/// de `ComboItem` — un combo SÍ es un producto, con su nombre y su foto.
+///
+/// La regla se aplica en `priceOrderItems`, que es la única fuente de precios
+/// del sistema, así que vale igual en la caja, en el checkout de la web y en el
+/// pedido manual. Ponerla solo en la caja habría dejado la web vendiendo al
+/// precio lleno mientras el mostrador daba la promoción.
+model PromocionRegla {
+  id         String    @id @default(cuid())
+  productId  String
+  nombre     String
+  /// Cuántas unidades se lleva el cliente para que aplique.
+  entregadas Int
+  /// Cuántas paga. Float porque "la segunda a mitad" son 1,5.
+  pagadas    Float
+  activa     Boolean   @default(true)
+  /// Vigencia opcional: sin fechas, la promo corre hasta que se desactive.
+  desde      DateTime?
+  hasta      DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  producto   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([activa])
 }
 
 /// Qué productos y en qué cantidad componen un combo.

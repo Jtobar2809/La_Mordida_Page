@@ -88,3 +88,88 @@ export async function crearComboDesdeSugerencia(input: unknown): Promise<ActionR
     return { success: false, error: "Ya existe un producto con ese nombre. Cámbiale el nombre al combo." };
   }
 }
+
+const reglaSchema = z.object({
+  productId: z.string().min(1),
+  nombre: z.string().min(3, "Ponle un nombre a la promoción"),
+  entregadas: z.coerce.number().int().positive(),
+  pagadas: z.coerce.number().positive(),
+  hasta: z.string().optional(),
+});
+
+/**
+ * Activa una regla de cobro (2x1, 3x2…) para un producto.
+ *
+ * Se rechaza si el formato no descuenta nada o si regala de más: un "2x2" no
+ * es promoción y un "1x2" cobraría el doble. Y se rechaza si el precio de la
+ * promoción no cubre los insumos, porque el punto entero de esta pantalla es
+ * que no se pueda activar una promoción que pierde plata en cada venta.
+ */
+export async function activarPromocion(input: unknown): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = reglaSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const { productId, nombre, entregadas, pagadas, hasta } = parsed.data;
+
+  if (pagadas >= entregadas) {
+    return { success: false, error: "Ese formato no descuenta nada: se paga por todas las unidades." };
+  }
+
+  const producto = await prisma.product.findUnique({
+    where: { id: productId },
+    include: {
+      recetaItems: { include: { insumo: { select: { costoUnitario: true } } } },
+      comboItems: { include: { producto: { include: { recetaItems: { include: { insumo: { select: { costoUnitario: true } } } } } } } },
+    },
+  });
+  if (!producto) return { success: false, error: "Ese producto ya no existe." };
+
+  const { costoDeProducto } = await import("@/lib/costos");
+  const costo = costoDeProducto(producto);
+  if (costo <= 0) {
+    return { success: false, error: `"${producto.name}" no tiene receta costeada, así que no se puede saber si la promoción pierde plata. Cuéstalo primero.` };
+  }
+
+  const contribucion = producto.price * pagadas - costo * entregadas;
+  if (contribucion <= 0) {
+    return {
+      success: false,
+      error: `Con un costo del ${Math.round((costo / producto.price) * 100)}%, ese formato pierde plata en cada venta. Aguanta hasta ${Math.round((pagadas / entregadas) * 100)}%.`,
+    };
+  }
+
+  let vence: Date | null = null;
+  if (hasta) {
+    const [a, m, d] = hasta.split("-").map(Number);
+    if (a && m && d) vence = new Date(a, m - 1, d, 23, 59, 59);
+  }
+
+  await prisma.promocionRegla.create({
+    data: { productId, nombre, entregadas, pagadas, activa: true, hasta: vence },
+  });
+
+  revalidatePath("/admin/promociones");
+  revalidatePath("/menu");
+  return { success: true };
+}
+
+export async function desactivarPromocion(id: string): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  // Se borra en vez de marcarse inactiva: una regla apagada que nadie ve solo
+  // sirve para reaparecer por accidente. Volver a activarla es un clic.
+  await prisma.promocionRegla.delete({ where: { id } });
+  revalidatePath("/admin/promociones");
+  revalidatePath("/menu");
+  return { success: true };
+}

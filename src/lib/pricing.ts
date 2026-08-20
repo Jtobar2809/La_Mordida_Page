@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { calcularDescuentoPromos, reglaVigente, type PromoAplicada } from "@/lib/promociones";
 
 /**
  * Única fuente de verdad de precios para CUALQUIER venta: el checkout del
@@ -31,7 +32,21 @@ export type PricedItem = {
 };
 
 export type PricingResult =
-  | { ok: true; items: PricedItem[]; subtotal: number }
+  | {
+      ok: true;
+      items: PricedItem[];
+      subtotal: number;
+      /**
+       * Descuento por promociones automáticas (2x1, 3x2, la segunda a mitad).
+       *
+       * Sale de aquí y no de cada pantalla porque `priceOrderItems` es la única
+       * fuente de precios del sistema: así la promoción vale igual en la caja,
+       * en el checkout de la web y en el pedido manual. Calcularla solo en la
+       * caja habría dejado la web cobrando el precio lleno.
+       */
+      descuentoPromos: number;
+      promosAplicadas: PromoAplicada[];
+    }
   | { ok: false; error: string };
 
 export async function priceOrderItems(
@@ -73,5 +88,19 @@ export async function priceOrderItems(
     });
   }
 
-  return { ok: true, items: priced, subtotal };
+  // Las promociones se aplican sobre el precio BASE, nunca sobre los extras: si
+  // en un 2x1 a una hamburguesa le agregan queso, el queso se cobra. Regalar
+  // los extras convierte una promoción calculada en una pérdida que nadie
+  // previó.
+  const reglas = await prisma.promocionRegla.findMany({
+    where: { activa: true, productId: { in: [...productMap.keys()] } },
+  });
+  const vigentes = reglas.filter((r) => reglaVigente(r));
+
+  const { descuento, aplicadas } = calcularDescuentoPromos(
+    priced.map((p) => ({ productId: p.productId, cantidad: p.quantity, precioUnitario: p.unitPrice })),
+    vigentes
+  );
+
+  return { ok: true, items: priced, subtotal, descuentoPromos: descuento, promosAplicadas: aplicadas };
 }

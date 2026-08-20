@@ -5,6 +5,8 @@ import {
   evaluarMismoProducto,
   generarPromosMismoProducto,
   FORMATOS_MISMO_PRODUCTO,
+  calcularDescuentoPromos,
+  reglaVigente,
   type ProductoCosteado,
 } from "./promociones";
 
@@ -189,5 +191,92 @@ describe("promociones del mismo producto", () => {
     for (let i = 1; i < s.length; i++) {
       expect(s[i - 1]!.contribucion).toBeGreaterThanOrEqual(s[i]!.contribucion);
     }
+  });
+});
+
+describe("calcularDescuentoPromos", () => {
+  const dosPorUno = { id: "r1", productId: "mo", nombre: "2x1 La Mordida", entregadas: 2, pagadas: 1 };
+  const tresPorDos = { id: "r2", productId: "mo", nombre: "3x2 La Mordida", entregadas: 3, pagadas: 2 };
+  const segundaMitad = { id: "r3", productId: "mo", nombre: "2da a mitad", entregadas: 2, pagadas: 1.5 };
+  const linea = (cantidad: number, productId = "mo", precioUnitario = 32000) => ({ productId, cantidad, precioUnitario });
+
+  it("un 2x1 con 2 unidades descuenta una", () => {
+    const r = calcularDescuentoPromos([linea(2)], [dosPorUno]);
+    expect(r.descuento).toBe(32000);
+    expect(r.aplicadas[0]!.veces).toBe(1);
+  });
+
+  it("con 1 unidad no aplica nada", () => {
+    expect(calcularDescuentoPromos([linea(1)], [dosPorUno]).descuento).toBe(0);
+  });
+
+  it("en un 2x1, pedir 5 paga 3", () => {
+    // 2 grupos completos + 1 suelta: se descuentan 2.
+    const r = calcularDescuentoPromos([linea(5)], [dosPorUno]);
+    expect(r.descuento).toBe(2 * 32000);
+    expect(r.aplicadas[0]!.veces).toBe(2);
+  });
+
+  it("en un 3x2, pedir 7 descuenta 2", () => {
+    const r = calcularDescuentoPromos([linea(7)], [tresPorDos]);
+    expect(r.descuento).toBe(2 * 32000);
+  });
+
+  it("la segunda a mitad descuenta medio precio", () => {
+    const r = calcularDescuentoPromos([linea(2)], [segundaMitad]);
+    expect(r.descuento).toBe(16000);
+  });
+
+  it("agrupa por producto aunque vengan en líneas separadas", () => {
+    // Dos líneas de una unidad son dos unidades: si el 2x1 solo mirara dentro
+    // de cada línea, pedirlas por separado dejaría al cliente sin promoción.
+    const r = calcularDescuentoPromos([linea(1), linea(1)], [dosPorUno]);
+    expect(r.descuento).toBe(32000);
+  });
+
+  it("no toca productos que no tienen regla", () => {
+    const r = calcularDescuentoPromos([linea(4, "otro", 20000)], [dosPorUno]);
+    expect(r.descuento).toBe(0);
+    expect(r.aplicadas).toHaveLength(0);
+  });
+
+  it("con dos reglas para el mismo producto gana la que más favorece al cliente", () => {
+    // Cobrar la menos generosa después de anunciar la otra es la clase de
+    // sorpresa que hace que la gente no vuelva.
+    const r = calcularDescuentoPromos([linea(6)], [tresPorDos, dosPorUno]);
+    // 2x1 sobre 6 descuenta 3; 3x2 sobre 6 descuenta 2. Gana el 2x1.
+    expect(r.descuento).toBe(3 * 32000);
+    expect(r.aplicadas[0]!.reglaId).toBe("r1");
+  });
+
+  it("ignora una regla que no descuenta nada o que regala de más", () => {
+    const absurda = { id: "x", productId: "mo", nombre: "2x2", entregadas: 2, pagadas: 2 };
+    const imposible = { id: "y", productId: "mo", nombre: "1x2", entregadas: 1, pagadas: 2 };
+    expect(calcularDescuentoPromos([linea(4)], [absurda]).descuento).toBe(0);
+    expect(calcularDescuentoPromos([linea(4)], [imposible]).descuento).toBe(0);
+  });
+
+  it("sin reglas el descuento es cero, no NaN", () => {
+    expect(calcularDescuentoPromos([linea(3)], []).descuento).toBe(0);
+  });
+});
+
+describe("reglaVigente", () => {
+  const base = { activa: true, desde: null, hasta: null };
+  const dia = (d: number) => new Date(2026, 7, d);
+
+  it("una regla activa sin fechas rige siempre", () => {
+    expect(reglaVigente(base, dia(15))).toBe(true);
+  });
+
+  it("una regla desactivada no rige aunque esté en fecha", () => {
+    expect(reglaVigente({ ...base, activa: false }, dia(15))).toBe(false);
+  });
+
+  it("respeta el inicio y el fin de la vigencia", () => {
+    const r = { ...base, desde: dia(10), hasta: dia(20) };
+    expect(reglaVigente(r, dia(9))).toBe(false);
+    expect(reglaVigente(r, dia(15))).toBe(true);
+    expect(reglaVigente(r, dia(21))).toBe(false);
   });
 });
