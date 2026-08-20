@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -10,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { upsertRecetaItem, deleteRecetaItem } from "@/actions/admin/recetas";
 import { UNIDAD_LABEL, formatCosto } from "@/lib/costos";
+import type { MotivoSinTasa } from "@/lib/operacion";
 import type { Insumo, Product, RecetaItem } from "@prisma/client";
 
 type ProductWithReceta = Product & {
@@ -17,7 +19,23 @@ type ProductWithReceta = Product & {
   recetaItems: (RecetaItem & { insumo: Insumo })[];
 };
 
-export function RecetasManager({ products, insumos }: { products: ProductWithReceta[]; insumos: Insumo[] }) {
+export function RecetasManager({
+  products,
+  insumos,
+  tasaOperacion,
+  motivoSinTasa,
+}: {
+  products: ProductWithReceta[];
+  insumos: Insumo[];
+  /**
+   * Qué fracción de cada peso vendido se va en costos fijos. Llega en null
+   * cuando no hay con qué dividir el arriendo, o cuando los fijos superan las
+   * ventas — en ambos casos no se muestra el reparto, porque un número
+   * inventado aquí es peor que ninguno.
+   */
+  tasaOperacion: number | null;
+  motivoSinTasa: MotivoSinTasa | null;
+}) {
   const router = useRouter();
   const [productId, setProductId] = React.useState(products[0]?.id ?? "");
   const [nuevoInsumoId, setNuevoInsumoId] = React.useState(insumos[0]?.id ?? "");
@@ -28,6 +46,13 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
   const costo = product?.recetaItems.reduce((total, item) => total + item.cantidad * item.insumo.costoUnitario, 0) ?? 0;
   const margen = product ? product.price - costo : 0;
   const margenPct = product && product.price > 0 ? Math.round((margen / product.price) * 100) : 0;
+
+  // El arriendo y la nómina no son parte de la receta: se estiman como una
+  // fracción del precio de venta. Por eso van en una tarjeta aparte y no
+  // sumados al costo de los insumos.
+  const costoOperacion = product && tasaOperacion !== null ? product.price * tasaOperacion : null;
+  const utilidad = costoOperacion !== null ? margen - costoOperacion : null;
+  const utilidadPct = utilidad !== null && product && product.price > 0 ? Math.round((utilidad / product.price) * 100) : 0;
 
   const insumosDisponibles = insumos.filter((i) => !product?.recetaItems.some((ri) => ri.insumoId === i.id));
 
@@ -95,19 +120,65 @@ export function RecetasManager({ products, insumos }: { products: ProductWithRec
               <p className="font-display text-lg text-charcoal-900 dark:text-cream">{product.name}</p>
               <p className="text-xs text-charcoal-400">Precio de venta: ${product.price.toLocaleString("es-CO")}</p>
             </div>
-            <div className="flex gap-6 text-sm">
+            <div className="flex flex-wrap gap-6 text-sm">
               <div>
                 <p className="text-charcoal-400">Costo receta</p>
                 <p className="font-semibold text-charcoal-900 dark:text-cream">{formatCosto(costo)}</p>
               </div>
               <div>
-                <p className="text-charcoal-400">Margen</p>
+                <p className="text-charcoal-400">Margen de contribución</p>
                 <p className={`font-semibold ${margen < 0 ? "text-red-500" : "text-olive-600 dark:text-olive-400"}`}>
                   {formatCosto(margen)} ({margenPct}%)
                 </p>
               </div>
+              {costoOperacion !== null && utilidad !== null && (
+                <>
+                  <div>
+                    <p className="text-charcoal-400">Operación estimada</p>
+                    <p className="font-semibold text-charcoal-500 dark:text-charcoal-300">−{formatCosto(costoOperacion)}</p>
+                  </div>
+                  <div>
+                    <p className="text-charcoal-400">Utilidad real</p>
+                    <p className={`font-semibold ${utilidad < 0 ? "text-red-500" : "text-olive-600 dark:text-olive-400"}`}>
+                      {formatCosto(utilidad)} ({utilidadPct}%)
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
+
+          {costoOperacion !== null ? (
+            <p className="mb-3 text-xs text-charcoal-400">
+              La <strong className="text-charcoal-600 dark:text-charcoal-200">operación estimada</strong> es la parte del
+              arriendo, los servicios y la nómina que le toca a este plato, repartida según su precio. No es un costo de
+              la receta —cambiarla no cambia lo que se pesa en cocina—, sino una forma de ver si el precio alcanza a
+              pagar todo. Se configura en la pestaña{" "}
+              <Link href="/admin/inventario/costos" className="underline hover:text-ember-500">
+                Costos fijos
+              </Link>
+              .
+            </p>
+          ) : motivoSinTasa === "BAJO_EQUILIBRIO" ? (
+            <p className="mb-3 text-xs text-amber-700 dark:text-amber-300">
+              Tus costos fijos hoy son mayores que tus ventas, así que repartirlos entre los platos daría un costo más
+              alto que el precio de venta — un número que no ayuda a decidir nada. Lo que hay que mirar mientras tanto es
+              cuánto falta para el equilibrio, en la pestaña{" "}
+              <Link href="/admin/inventario/costos" className="underline hover:text-amber-900 dark:hover:text-amber-100">
+                Costos fijos
+              </Link>
+              .
+            </p>
+          ) : (
+            <p className="mb-3 text-xs text-charcoal-400">
+              Para ver cuánto le toca a este plato del arriendo y la nómina, registra tus gastos fijos y tu meta de
+              ventas en la pestaña{" "}
+              <Link href="/admin/inventario/costos" className="underline hover:text-ember-500">
+                Costos fijos
+              </Link>
+              .
+            </p>
+          )}
 
           <p className="mb-3 text-xs text-charcoal-400">
             Aquí solo defines <strong className="text-charcoal-600 dark:text-charcoal-200">cuánto</strong> lleva cada plato.

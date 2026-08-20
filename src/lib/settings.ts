@@ -12,6 +12,12 @@ export const DEFAULT_SETTINGS = {
   welcomeBonusPoints: "20",
   // Global feature toggles (stringified booleans)
   carouselEnabled: "true",
+  // Supuestos del análisis de costos fijos (ver src/lib/operacion.ts). Solo se
+  // usan mientras no haya ventas reales del período con las cuales medir; en
+  // cuanto las hay, mandan los datos y estos quedan de referencia.
+  ventasEstimadasMes: "0",
+  ticketPromedioEstimado: "0",
+  diasOperacionMes: "30",
 };
 
 export type SettingsKey = keyof typeof DEFAULT_SETTINGS;

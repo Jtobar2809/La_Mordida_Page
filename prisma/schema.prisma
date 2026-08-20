@@ -672,6 +672,37 @@ model Settings {
   value String
 }
 
+/// Un gasto que se paga todos los meses así no se venda nada: arriendo,
+/// servicios, los sueldos de nómina, el contador.
+///
+/// Vive aparte de las recetas a propósito. Meter el arriendo dentro del costo de
+/// una hamburguesa obliga a inventar cuántas se van a vender para poder
+/// dividirlo, y si esa cifra falla el "costo" del plato cambia sin que nada haya
+/// cambiado en la cocina. Aquí se guardan enteros y por mes; repartirlos es una
+/// decisión de análisis (ver src/lib/operacion.ts), no un dato del producto.
+model CostoFijo {
+  id        String             @id @default(cuid())
+  nombre    String             @unique
+  /// Valor mensual en COP. Un gasto anual (la licencia, el seguro) se divide
+  /// entre 12 antes de anotarlo, para que todo en esta tabla sea comparable.
+  monto     Int
+  categoria CostoFijoCategoria @default(OTRO)
+  notas     String?
+  activo    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([activo])
+}
+
+enum CostoFijoCategoria {
+  ARRIENDO
+  SERVICIOS
+  MANO_DE_OBRA
+  ADMINISTRATIVO
+  OTRO
+}
+
 model StampCard {
   id              String    @id @default(cuid())
   userId          String    @unique

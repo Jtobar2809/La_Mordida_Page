@@ -1,16 +1,18 @@
 import { prisma } from "@/lib/prisma";
 import { RecetasManager } from "@/components/admin/recetas-manager";
 import { InventarioTabs } from "@/components/admin/inventario-tabs";
+import { obtenerPanoramaOperacion } from "@/lib/operacion";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRecetasPage() {
-  const [products, insumos] = await Promise.all([
+  const [products, insumos, panorama] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: { recetaItems: { include: { insumo: true } }, category: { select: { name: true } } },
     }),
     prisma.insumo.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
+    obtenerPanoramaOperacion(),
   ]);
 
   return (
@@ -22,7 +24,12 @@ export default async function AdminRecetasPage() {
       {insumos.length === 0 ? (
         <p className="text-charcoal-400">Primero crea algunos insumos en la pestaña &quot;Insumos&quot; para poder armar recetas.</p>
       ) : (
-        <RecetasManager products={products} insumos={insumos} />
+        <RecetasManager
+          products={products}
+          insumos={insumos}
+          tasaOperacion={panorama.tasaOperacion}
+          motivoSinTasa={panorama.motivoSinTasa}
+        />
       )}
     </div>
   );

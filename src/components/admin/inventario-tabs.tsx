@@ -7,6 +7,7 @@ const TABS = [
   { href: "/admin/inventario/resumen", label: "Resumen" },
   { href: "/admin/inventario", label: "Insumos" },
   { href: "/admin/inventario/recetas", label: "Recetas" },
+  { href: "/admin/inventario/costos", label: "Costos fijos" },
   { href: "/admin/inventario/produccion", label: "Producción" },
   { href: "/admin/inventario/proveedores", label: "Proveedores" },
   { href: "/admin/inventario/compras", label: "Compras" },
