@@ -12,6 +12,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:inventario": "tsx prisma/seed-inventario.ts",
     "db:import:inventario": "tsx prisma/importar-inventario.ts",
+    "db:recostear": "tsx prisma/recostear-elaborados.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
