@@ -232,9 +232,67 @@ model Insumo {
   usadoComoBaseEn      InsumoComponente[] @relation("UsadoComoBase")
   extras               ProductExtra[]
   producciones         Produccion[]
+  conteoItems          ConteoItem[]
 
   @@index([activo])
   @@index([proveedorPrincipalId])
+}
+
+/// Una toma de inventario física: contar lo que de verdad hay en la nevera y
+/// compararlo con lo que el sistema cree tener.
+///
+/// Es la única forma de ver el hueco entre el papel y la realidad — porciones
+/// generosas, desperdicio no reportado, cosas que se dañan. El stock que el
+/// sistema calcula solo baja por ventas y producciones; nada de eso captura la
+/// carne que se quemó ni el queso que se puso feo.
+model ConteoInventario {
+  id          String       @id @default(cuid())
+  codigo      String       @unique
+  estado      ConteoEstado @default(BORRADOR)
+  notas       String?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  aplicadoAt  DateTime?
+  items       ConteoItem[]
+
+  @@index([estado])
+  @@index([createdAt])
+}
+
+model ConteoItem {
+  id       String @id @default(cuid())
+  conteoId String
+  insumoId String
+
+  /// Lo que el sistema creía tener CUANDO SE ABRIÓ el conteo, congelado.
+  ///
+  /// Congelarlo es lo que permite contar con el negocio abierto. Si se leyera
+  /// el stock al aplicar, una hamburguesa vendida mientras se contaba
+  /// aparecería como faltante. Al aplicar se usa la diferencia
+  /// (contado − stockSistema) como ajuste sobre el stock actual, nunca se
+  /// escribe el contado como valor absoluto: eso borraría las ventas ocurridas
+  /// durante el conteo.
+  stockSistema Float
+
+  /// Lo contado físicamente. Null = no se contó este insumo, y entonces no se
+  /// ajusta nada. Permite contar solo la carne hoy y el resto otro día.
+  stockContado Float?
+
+  /// Costo al abrir el conteo, para valorizar la diferencia con el precio de
+  /// ese momento y que el comprobante histórico no cambie después.
+  costoUnitario Float @default(0)
+
+  conteo ConteoInventario @relation(fields: [conteoId], references: [id], onDelete: Cascade)
+  insumo Insumo           @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([conteoId, insumoId])
+  @@index([conteoId])
+  @@index([insumoId])
+}
+
+enum ConteoEstado {
+  BORRADOR
+  APLICADO
 }
 
 // Receta / BOM: qué insumos y en qué cantidad componen cada producto del menú.
@@ -311,6 +369,8 @@ model MovimientoInsumo {
   motivo        String?
   orderId       String?
   produccionId  String?
+  /// De qué toma de inventario salió este ajuste, si salió de una.
+  conteoId      String?
   createdById   String?
   createdAt     DateTime       @default(now())
   insumo        Insumo         @relation(fields: [insumoId], references: [id], onDelete: Cascade)
@@ -320,6 +380,7 @@ model MovimientoInsumo {
   @@index([createdAt])
   @@index([orderId])
   @@index([produccionId])
+  @@index([conteoId])
 }
 
 // Fase 3: proveedores y compras. Registrar una Compra descuenta... perdón,
