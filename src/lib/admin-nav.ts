@@ -10,6 +10,7 @@ import {
   Stamp,
   Warehouse,
   Calculator,
+  BookOpenCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -32,6 +33,7 @@ export const adminNavLinks: AdminNavLink[] = [
   { href: "/admin/caja", label: "Caja", icon: Calculator },
   { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/admin/inventario", label: "Inventario", icon: Warehouse },
+  { href: "/admin/contabilidad", label: "Contabilidad", icon: BookOpenCheck },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/sellos", label: "Tarjeta de sellos", icon: Stamp },
   { href: "/admin/galeria", label: "Galería", icon: ImageIcon },

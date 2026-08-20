@@ -720,12 +720,52 @@ model CostoFijo {
   /// entre 12 antes de anotarlo, para que todo en esta tabla sea comparable.
   monto     Int
   categoria CostoFijoCategoria @default(OTRO)
+  /// Lo que los dueños sacan del negocio. Cuenta para el punto de equilibrio
+  /// —hay que venderlo igual— pero NO es un gasto: repartir la ganancia no es
+  /// un costo de operar. En el estado de resultados va debajo de la utilidad,
+  /// no restando antes de ella, o el negocio se vería menos rentable de lo que
+  /// es. Marcado con un flag y no por el nombre, que se puede editar.
+  esRetiro  Boolean            @default(false)
   notas     String?
   activo    Boolean            @default(true)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
   @@index([activo])
+}
+
+/// Un gasto suelto que no es insumo ni recurrente: la reparación de la
+/// freidora, la publicidad, el impuesto, una olla nueva.
+///
+/// Deliberadamente NO se registran aquí las compras de insumos. Esas viven en
+/// `Compra`, y al estado de resultados los insumos entran por lo que se
+/// consumió (MovimientoInsumo), no por lo que se compró. Si además se anotaran
+/// como Gasto se contarían dos veces, y peor: comprar una nevera llena de carne
+/// aparecería como una pérdida del mes en vez de como inventario.
+model Gasto {
+  id          String         @id @default(cuid())
+  fecha       DateTime       @default(now())
+  concepto    String
+  monto       Int
+  categoria   GastoCategoria @default(OTRO)
+  metodoPago  MetodoPago     @default(EFECTIVO)
+  notas       String?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([fecha])
+  @@index([categoria])
+}
+
+enum GastoCategoria {
+  MANTENIMIENTO
+  PUBLICIDAD
+  TRANSPORTE
+  IMPUESTOS
+  EQUIPOS
+  DOMICILIOS
+  OTRO
 }
 
 enum CostoFijoCategoria {
