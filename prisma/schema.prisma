@@ -126,16 +126,49 @@ model Product {
   available   Boolean        @default(true)
   spicyLevel  Int            @default(0)
   calories    Int?
+  /// Un combo no se compone de insumos sino de otros productos del menú
+  /// ("1 La Clásica + 1 papas + 1 gaseosa"). Ver ComboItem.
+  esCombo     Boolean        @default(false)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   orderItems  OrderItem[]
   category    Category       @relation(fields: [categoryId], references: [id])
   extras      ProductExtra[]
   recetaItems RecetaItem[]
+  comboItems  ComboItem[]    @relation("ComboContiene")
+  enCombos    ComboItem[]    @relation("ProductoEnCombo")
 
   @@index([categoryId])
   @@index([featured])
   @@index([available])
+}
+
+/// Qué productos y en qué cantidad componen un combo.
+///
+/// Un combo podría armarse repitiendo a mano la receta de la hamburguesa más la
+/// de las papas más la de la gaseosa, pero entonces el día que cambie la receta
+/// de la hamburguesa el combo se quedaría con la vieja y nadie lo notaría.
+/// Apuntando a los productos, el costo del combo se recalcula solo.
+///
+/// Un solo nivel a propósito: un combo no puede contener otro combo. No hay caso
+/// real que lo pida, y evita tener que defenderse de ciclos como sí hubo que
+/// hacer en InsumoComponente.
+///
+/// Un combo además puede tener su propia `recetaItems` para lo que solo lleva él
+/// —la bolsa, el empaque—; los dos costos se suman.
+model ComboItem {
+  id         String   @id @default(cuid())
+  comboId    String
+  productoId String
+  cantidad   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  combo      Product  @relation("ComboContiene", fields: [comboId], references: [id], onDelete: Cascade)
+  producto   Product  @relation("ProductoEnCombo", fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@unique([comboId, productoId])
+  @@index([comboId])
+  @@index([productoId])
 }
 
 model ProductExtra {

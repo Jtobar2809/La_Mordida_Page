@@ -26,19 +26,36 @@ export function requiereDescuentoInventario(status: string) {
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /**
- * Cuánto insumo consume un pedido, sumando dos fuentes:
+ * Cuánto insumo consume un pedido, sumando tres fuentes:
  *
  *  1. La receta (BOM) de cada producto × la cantidad vendida.
- *  2. Los extras elegidos en cada línea, vía `ProductExtra.insumoId`.
+ *  2. Las recetas de los productos que componen un combo, si el producto es
+ *     un combo (ver ComboItem).
+ *  3. Los extras elegidos en cada línea, vía `ProductExtra.insumoId`.
  *
- * Los extras se ignoraban por completo hasta ahora: se cobraban $3.000 de
+ * Los extras se ignoraban por completo hasta hace poco: se cobraban $3.000 de
  * "extra queso" y el queso nunca salía del inventario, así que el stock
- * teórico quedaba siempre por encima del real sin causa aparente.
+ * teórico quedaba siempre por encima del real sin causa aparente. Los combos
+ * tenían el mismo agujero pero peor: un combo no tiene receta propia, así que
+ * vender uno de $38.000 no descontaba absolutamente nada.
  */
 async function calcularConsumoDelPedido(db: DbClient, orderId: string) {
   const order = await db.order.findUnique({
     where: { id: orderId },
-    include: { items: { include: { product: { include: { recetaItems: true } } } } },
+    include: {
+      items: {
+        include: {
+          product: {
+            include: {
+              recetaItems: true,
+              // Un solo nivel de anidamiento porque un combo no puede contener
+              // otro combo — la regla la impone upsertComboItem.
+              comboItems: { include: { producto: { include: { recetaItems: true } } } },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!order) return null;
@@ -48,8 +65,19 @@ async function calcularConsumoDelPedido(db: DbClient, orderId: string) {
     consumo.set(insumoId, (consumo.get(insumoId) ?? 0) + cantidad);
 
   for (const item of order.items) {
+    // La receta propia del producto. En un combo es opcional y suele ser solo
+    // el empaque que lleva únicamente el combo.
     for (const recetaItem of item.product.recetaItems) {
       sumar(recetaItem.insumoId, recetaItem.cantidad * item.quantity);
+    }
+
+    // Y lo que traen adentro sus componentes. Igual que con los productos
+    // sueltos, un componente sin receta simplemente no descuenta nada en vez
+    // de frenar la venta.
+    for (const comboItem of item.product.comboItems) {
+      for (const recetaItem of comboItem.producto.recetaItems) {
+        sumar(recetaItem.insumoId, recetaItem.cantidad * comboItem.cantidad * item.quantity);
+      }
     }
   }
 

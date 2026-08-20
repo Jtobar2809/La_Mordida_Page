@@ -72,6 +72,34 @@ export function formatCosto(valor: number) {
   }).format(valor);
 }
 
+/**
+ * Costo en insumos de un producto, sea suelto o combo. Tipado estructural a
+ * propósito: lo usan tanto el servidor (con objetos de Prisma) como la pantalla
+ * de Recetas, y así el costo de un combo se calcula igual en ambos lados en vez
+ * de escribirse dos veces y desviarse con el tiempo.
+ *
+ * Un combo suma las recetas de los productos que lo componen, más su propia
+ * receta si tiene (el empaque que solo lleva él).
+ */
+type LineaDeReceta = { cantidad: number; insumo: { costoUnitario: number } };
+type ProductoCosteable = {
+  recetaItems: LineaDeReceta[];
+  comboItems?: { cantidad: number; producto: { recetaItems: LineaDeReceta[] } }[];
+};
+
+export function costoDeReceta(items: LineaDeReceta[]) {
+  return items.reduce((total, item) => total + item.cantidad * item.insumo.costoUnitario, 0);
+}
+
+export function costoDeProducto(producto: ProductoCosteable) {
+  const propio = costoDeReceta(producto.recetaItems);
+  const componentes = (producto.comboItems ?? []).reduce(
+    (total, ci) => total + ci.cantidad * costoDeReceta(ci.producto.recetaItems),
+    0
+  );
+  return propio + componentes;
+}
+
 export const UNIDAD_LABEL: Record<string, string> = {
   GRAMOS: "g",
   KILOGRAMOS: "kg",

@@ -48,6 +48,7 @@ const createProductSchema = z.object({
   featured: z.boolean().default(false),
   available: z.boolean().default(true),
   spicyLevel: z.coerce.number().int().min(0).max(3).default(0),
+  esCombo: z.boolean().default(false),
 });
 
 // Validación para EDITAR un producto existente: todo opcional. Solo lo
@@ -66,6 +67,7 @@ const updateProductSchema = z.object({
   featured: z.boolean().optional(),
   available: z.boolean().optional(),
   spicyLevel: z.coerce.number().int().min(0).max(3).optional(),
+  esCombo: z.boolean().optional(),
 });
 
 const productSchema = z.union([createProductSchema, updateProductSchema]);

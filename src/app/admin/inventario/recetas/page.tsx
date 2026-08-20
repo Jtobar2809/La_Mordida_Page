@@ -9,7 +9,11 @@ export default async function AdminRecetasPage() {
   const [products, insumos, panorama] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
-      include: { recetaItems: { include: { insumo: true } }, category: { select: { name: true } } },
+      include: {
+        recetaItems: { include: { insumo: true } },
+        category: { select: { name: true } },
+        comboItems: { include: { producto: { include: { recetaItems: { include: { insumo: true } } } } } },
+      },
     }),
     prisma.insumo.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     obtenerPanoramaOperacion(),

@@ -22,6 +22,7 @@ type FormFields = {
   image: string;
   featured: boolean;
   available: boolean;
+  esCombo: boolean;
   spicyLevel: number;
 };
 
@@ -33,6 +34,7 @@ const BASE_FIELDS = [
   "image",
   "featured",
   "available",
+  "esCombo",
   "spicyLevel",
 ] as const;
 type BaseField = (typeof BASE_FIELDS)[number];
@@ -100,6 +102,7 @@ export function ProductForm({
     image: product?.image ?? "",
     featured: product?.featured ?? false,
     available: product?.available ?? true,
+    esCombo: product?.esCombo ?? false,
     spicyLevel: product?.spicyLevel ?? 0,
   });
   const [ingredients, setIngredients] = React.useState<string[]>(product?.ingredients ?? []);
@@ -361,6 +364,22 @@ export function ProductForm({
           Disponible
         </label>
       </div>
+
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={form.esCombo}
+          onChange={(e) => updateField("esCombo", e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-ember-600"
+        />
+        <span>
+          Es un combo (se arma con otros productos del menú)
+          <span className="block text-xs text-charcoal-400">
+            Qué lleva adentro se define después en Inventario › Recetas. El costo sale solo de las recetas de esos
+            productos, y al venderlo el inventario descuenta todo lo que llevan.
+          </span>
+        </span>
+      </label>
 
       {isEditing && (
         <p className="text-xs text-charcoal-400">

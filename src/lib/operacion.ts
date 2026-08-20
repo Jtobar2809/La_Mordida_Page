@@ -2,6 +2,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
+import { costoDeProducto } from "@/lib/costos";
 
 /**
  * Punto de equilibrio y reparto de costos fijos.
@@ -107,7 +108,14 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
     }),
     prisma.product.findMany({
       where: { available: true },
-      include: { recetaItems: { include: { insumo: { select: { costoUnitario: true } } } } },
+      include: {
+        recetaItems: { include: { insumo: { select: { costoUnitario: true } } } },
+        // Un combo no tiene receta propia (o solo la del empaque): lo que
+        // cuesta está en las recetas de los productos que lo componen.
+        comboItems: {
+          include: { producto: { include: { recetaItems: { include: { insumo: { select: { costoUnitario: true } } } } } } },
+        },
+      },
     }),
   ]);
 
@@ -126,8 +134,9 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
   let origenMargen: OrigenMargen;
   let margenContribucion: number;
 
-  const conReceta = productos.filter((p) => p.recetaItems.length > 0 && p.price > 0);
-  const productosSinReceta = productos.filter((p) => p.recetaItems.length === 0).map((p) => p.name);
+  const costeado = (p: (typeof productos)[number]) => p.recetaItems.length > 0 || p.comboItems.length > 0;
+  const conReceta = productos.filter((p) => costeado(p) && p.price > 0);
+  const productosSinReceta = productos.filter((p) => !costeado(p)).map((p) => p.name);
 
   // Una sola regla decide si se le cree a lo medido, para que el margen y el
   // ticket no puedan salir de fuentes distintas y contarse historias diferentes.
@@ -145,10 +154,7 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
     // los contaría con margen del 100% (costo cero) e inflaría el promedio, que
     // es justo el error que hace creer que el negocio va mejor de lo que va.
     const sumaPrecios = conReceta.reduce((s, p) => s + p.price, 0);
-    const sumaCostos = conReceta.reduce(
-      (s, p) => s + p.recetaItems.reduce((t, r) => t + r.cantidad * r.insumo.costoUnitario, 0),
-      0
-    );
+    const sumaCostos = conReceta.reduce((s, p) => s + costoDeProducto(p), 0);
     origenMargen = "RECETAS";
     margenContribucion = (sumaPrecios - sumaCostos) / sumaPrecios;
   } else {
