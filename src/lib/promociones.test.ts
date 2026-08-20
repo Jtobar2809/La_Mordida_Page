@@ -1,0 +1,120 @@
+import { describe, it, expect } from "vitest";
+import { generarSugerencias, descuentoMaximoSeguro, type ProductoCosteado } from "./promociones";
+
+/** Productos reales de La Mordida, con sus costos de agosto 2026. */
+const CLASICA: ProductoCosteado = { id: "cl", nombre: "La Clásica", precio: 20000, costo: 7258, categoria: "Hamburguesas" };
+const MORDIDA: ProductoCosteado = { id: "mo", nombre: "La Mordida", precio: 32000, costo: 9617, categoria: "Hamburguesas" };
+const TRIPLE: ProductoCosteado = { id: "tr", nombre: "Triple Impacto", precio: 28000, costo: 16208, categoria: "Hamburguesas" };
+const PAPAS: ProductoCosteado = { id: "pa", nombre: "Papas", precio: 9000, costo: 1670, categoria: "Acompañamientos" };
+const GASEOSA: ProductoCosteado = { id: "ga", nombre: "Gaseosa", precio: 4000, costo: 1250, categoria: "Bebidas" };
+
+const CARTA = [CLASICA, MORDIDA, TRIPLE, PAPAS, GASEOSA];
+
+describe("generarSugerencias", () => {
+  it("arma combos completos, plato+bebida y dos platos", () => {
+    const s = generarSugerencias(CARTA, 0.15);
+    const tipos = new Set(s.map((x) => x.tipo));
+    expect(tipos).toEqual(new Set(["COMPLETO", "PLATO_BEBIDA", "DOS_PLATOS"]));
+    // 3 platos × 1 acompañamiento × 1 bebida = 3 completos.
+    expect(s.filter((x) => x.tipo === "COMPLETO")).toHaveLength(3);
+    // 3 platos tomados de a 2 = 3 parejas, sin repetir al derecho y al revés.
+    expect(s.filter((x) => x.tipo === "DOS_PLATOS")).toHaveLength(3);
+  });
+
+  it("ordena por lo que más plata deja, no por precio", () => {
+    const s = generarSugerencias(CARTA, 0.15);
+    for (let i = 1; i < s.length; i++) {
+      expect(s[i - 1]!.contribucion).toBeGreaterThanOrEqual(s[i]!.contribucion);
+    }
+  });
+
+  it("no repite la misma pareja de platos invertida", () => {
+    const parejas = generarSugerencias(CARTA, 0.15).filter((x) => x.tipo === "DOS_PLATOS");
+    const normalizadas = parejas.map((p) => p.productos.map((x) => x.id).sort().join("|"));
+    expect(new Set(normalizadas).size).toBe(parejas.length);
+  });
+
+  it("nunca mete un producto sin costo, porque no se le puede confiar el margen", () => {
+    const sinCosto: ProductoCosteado = { id: "ar", nombre: "Aros", precio: 10000, costo: 0, categoria: "Acompañamientos" };
+    // El generador recibe solo productos costeados; si igual entrara uno en
+    // cero, quedaría con contribución del 100% y encabezaría el ranking.
+    const s = generarSugerencias([CLASICA, sinCosto, GASEOSA], 0.15);
+    const conAros = s.find((x) => x.productos.some((p) => p.id === "ar"));
+    expect(conAros?.costoPct).toBeLessThan(100);
+  });
+});
+
+describe("la aritmética del descuento", () => {
+  it("calcula cuántas veces más hay que vender para compensar", () => {
+    // La Clásica sola: aporta $12.742. Con $3.000 de descuento aporta $9.742.
+    // 12.742 / 9.742 = 1,31 → hace falta un 31% más de ventas para quedar igual.
+    const [combo] = generarSugerencias([CLASICA], 0);
+    void combo;
+    const soloClasica = generarSugerencias([CLASICA, GASEOSA], 0.125).find((x) => x.tipo === "PLATO_BEBIDA")!;
+    expect(soloClasica.vecesMasVentas).toBeGreaterThan(1);
+    // La cuenta es contribución suelta ÷ contribución con descuento.
+    expect(soloClasica.vecesMasVentas).toBeCloseTo(
+      soloClasica.contribucionSuelta / soloClasica.contribucion,
+      6
+    );
+  });
+
+  it("separa los dos escenarios, que es lo que decide si el combo sirve", () => {
+    const combo = generarSugerencias(CARTA, 0.15).find(
+      (x) => x.tipo === "COMPLETO" && x.productos[0]!.id === "cl"
+    )!;
+    // Si ya compraba todo: pierdes exactamente el descuento.
+    expect(combo.perdidaSiYaCompraba).toBe(combo.ahorro);
+    // Si solo llevaba la hamburguesa: ganas lo que aportan papas y gaseosa
+    // menos el descuento. Con 15% eso sigue siendo positivo.
+    expect(combo.gananciaSiSoloLlevabaElPlato).toBeGreaterThan(0);
+    expect(combo.gananciaSiSoloLlevabaElPlato).toBe(combo.contribucion - combo.contribucionPlatoSolo);
+  });
+
+  it("marca en rojo un descuento que no cubre ni los insumos", () => {
+    // 90% de descuento sobre el Triple Impacto, que ya es el de peor margen.
+    const s = generarSugerencias([TRIPLE, GASEOSA], 0.9).find((x) => x.tipo === "PLATO_BEBIDA")!;
+    expect(s.bajoCosto).toBe(true);
+    expect(s.seguro).toBe(false);
+    expect(s.advertencia).toMatch(/no cubre/i);
+    // Sin contribución positiva, ningún volumen compensa.
+    expect(s.vecesMasVentas).toBe(Infinity);
+  });
+
+  it("avisa cuando el descuento pasa del techo que aguanta el combo", () => {
+    const s = generarSugerencias([TRIPLE, GASEOSA], 0.4).find((x) => x.tipo === "PLATO_BEBIDA")!;
+    expect(s.seguro).toBe(false);
+    expect(s.advertencia).toMatch(/techo/i);
+    // Pero todavía cubre los insumos: es advertencia, no prohibición.
+    expect(s.bajoCosto).toBe(false);
+  });
+
+  it("un descuento moderado sobre un buen margen queda en verde", () => {
+    const s = generarSugerencias([MORDIDA, PAPAS, GASEOSA], 0.15).find((x) => x.tipo === "COMPLETO")!;
+    expect(s.seguro).toBe(true);
+    expect(s.advertencia).toBeNull();
+  });
+
+  it("redondea a múltiplos de 500 para que parezca precio de carta", () => {
+    for (const s of generarSugerencias(CARTA, 0.13)) {
+      expect(s.precioSugerido % 500).toBe(0);
+    }
+  });
+});
+
+describe("descuentoMaximoSeguro", () => {
+  it("es la mitad del margen", () => {
+    // $33.000 de precio con $10.178 de costo = 69,2% de margen -> techo 34,6%.
+    expect(descuentoMaximoSeguro(33000, 10178)).toBeCloseTo(0.3458, 3);
+  });
+
+  it("un producto de mal margen aguanta mucho menos descuento", () => {
+    const bueno = descuentoMaximoSeguro(MORDIDA.precio, MORDIDA.costo);
+    const malo = descuentoMaximoSeguro(TRIPLE.precio, TRIPLE.costo);
+    expect(malo).toBeLessThan(bueno);
+  });
+
+  it("sin precio no hay techo que calcular", () => {
+    expect(descuentoMaximoSeguro(0, 0)).toBe(0);
+  });
+});
