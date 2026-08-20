@@ -48,9 +48,16 @@ export default async function AdminResumenPage({
         },
       }),
 
+      // SALIDA y ENTRADA, no solo SALIDA: cancelar un pedido no borra la salida
+      // de inventario, crea una entrada que la compensa. Contando solo las
+      // salidas, cada cancelación sumaba al costo de venta como si la comida se
+      // hubiera consumido — un pedido cancelado de $28.000 inflaba el costo en
+      // los $16.208 de su receta y hundía el margen bruto sin explicación.
       prisma.movimientoInsumo.findMany({
         where: {
-          tipo: "SALIDA",
+          tipo: {
+            in: ["SALIDA", "ENTRADA"],
+          },
           orderId: {
             not: null,
           },
@@ -107,14 +114,12 @@ export default async function AdminResumenPage({
   const ingresos = ventas._sum?.total ?? 0;
   const cantidadPedidos = ventas._count._all;
 
-  const cogs = movimientosVenta.reduce(
-    (sum, movimiento) =>
-      sum +
+  const cogs = movimientosVenta.reduce((sum, movimiento) => {
+    const costo =
       movimiento.cantidad *
-        (movimiento.costoUnitario ??
-          movimiento.insumo.costoUnitario),
-    0
-  );
+      (movimiento.costoUnitario ?? movimiento.insumo.costoUnitario);
+    return movimiento.tipo === "ENTRADA" ? sum - costo : sum + costo;
+  }, 0);
 
   const margenBruto = ingresos - cogs;
 
