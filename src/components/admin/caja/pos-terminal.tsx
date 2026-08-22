@@ -13,6 +13,7 @@ import {
   ShoppingCart,
   ArrowDownLeft,
   ArrowUpRight,
+  HandCoins,
   History,
   LockKeyhole,
   StickyNote,
@@ -21,10 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCOP, cn } from "@/lib/utils";
 import { totalLinea } from "@/types/caja";
+import type { CupoRetiros } from "@/lib/retiros";
 import type { CategoriaPOS, LineaCarrito, ProductoPOS, SesionCajaActiva } from "@/types/caja";
 import { CobroModal } from "./cobro-modal";
 import { CierreCajaModal } from "./cierre-caja-modal";
 import { MovimientoCajaModal } from "./movimiento-caja-modal";
+import { RetiroSocioModal } from "./retiro-socio-modal";
 import { TicketVenta, type DatosTicket } from "./ticket-venta";
 import { VentasDelTurno, type VentaResumida } from "./ventas-del-turno";
 
@@ -32,10 +35,12 @@ export function PosTerminal({
   sesion,
   catalogo,
   ventas,
+  cupo,
 }: {
   sesion: SesionCajaActiva;
   catalogo: CategoriaPOS[];
   ventas: VentaResumida[];
+  cupo: CupoRetiros;
 }) {
   const router = useRouter();
 
@@ -48,6 +53,7 @@ export function PosTerminal({
   const [cobrando, setCobrando] = React.useState(false);
   const [cerrando, setCerrando] = React.useState(false);
   const [movimiento, setMovimiento] = React.useState<"INGRESO" | "EGRESO" | null>(null);
+  const [retirando, setRetirando] = React.useState(false);
   const [ticket, setTicket] = React.useState<DatosTicket | null>(null);
 
   const buscadorRef = React.useRef<HTMLInputElement>(null);
@@ -140,8 +146,10 @@ export function PosTerminal({
     <div className="space-y-5">
       <EncabezadoTurno
         sesion={sesion}
+        cupo={cupo}
         onIngreso={() => setMovimiento("INGRESO")}
         onEgreso={() => setMovimiento("EGRESO")}
+        onRetiro={() => setRetirando(true)}
         onCerrar={() => setCerrando(true)}
       />
 
@@ -350,6 +358,8 @@ export function PosTerminal({
 
       {movimiento && <MovimientoCajaModal tipo={movimiento} sesion={sesion} onClose={() => setMovimiento(null)} />}
 
+      {retirando && <RetiroSocioModal sesion={sesion} cupo={cupo} onClose={() => setRetirando(false)} />}
+
       {ticket && <TicketVenta datos={ticket} onClose={() => setTicket(null)} />}
     </div>
   );
@@ -357,13 +367,17 @@ export function PosTerminal({
 
 function EncabezadoTurno({
   sesion,
+  cupo,
   onIngreso,
   onEgreso,
+  onRetiro,
   onCerrar,
 }: {
   sesion: SesionCajaActiva;
+  cupo: CupoRetiros;
   onIngreso: () => void;
   onEgreso: () => void;
+  onRetiro: () => void;
   onCerrar: () => void;
 }) {
   const { resumen } = sesion;
@@ -393,6 +407,9 @@ function EncabezadoTurno({
           <Button variant="ghost" size="sm" onClick={onEgreso} className="gap-1.5">
             <ArrowUpRight className="h-4 w-4 text-ember-500" /> Egreso
           </Button>
+          <Button variant="ghost" size="sm" onClick={onRetiro} className="gap-1.5">
+            <HandCoins className="h-4 w-4 text-mustard-500" /> Retiro socio
+          </Button>
           <Link href="/admin/caja/sesiones">
             <Button variant="ghost" size="sm" className="gap-1.5">
               <History className="h-4 w-4" /> Turnos
@@ -404,31 +421,60 @@ function EncabezadoTurno({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Metrica etiqueta="Esperado en cajón" valor={formatCOP(resumen.esperadoEfectivo)} destacado />
         <Metrica etiqueta={`Ventas (${resumen.cantidadVentas})`} valor={formatCOP(resumen.totalVentas)} />
         <Metrica etiqueta="Nequi" valor={formatCOP(resumen.totalNequi)} />
+        {/* Gastos y retiros van separados a propósito: pagarle al proveedor es
+            un costo de operar, sacar plata para la casa es repartir la
+            ganancia. Sumarlos en una sola cifra hace ver el turno más caro. */}
         <Metrica etiqueta="Gastos del turno" valor={formatCOP(resumen.totalEgresos)} />
+        {cupo.hayPresupuesto ? (
+          <Metrica
+            etiqueta={`Cupo del mes (van ${formatCOP(cupo.retirado)})`}
+            valor={cupo.exceso > 0 ? `−${formatCOP(cupo.exceso)}` : formatCOP(cupo.saldo)}
+            alerta={cupo.exceso > 0}
+          />
+        ) : (
+          <Metrica etiqueta="Retiros del turno" valor={formatCOP(resumen.totalRetiros)} />
+        )}
       </div>
     </div>
   );
 }
 
-function Metrica({ etiqueta, valor, destacado }: { etiqueta: string; valor: string; destacado?: boolean }) {
+function Metrica({
+  etiqueta,
+  valor,
+  destacado,
+  alerta,
+}: {
+  etiqueta: string;
+  valor: string;
+  destacado?: boolean;
+  /** Pinta la cifra en rojo: hoy solo el cupo de retiros cuando se pasaron. */
+  alerta?: boolean;
+}) {
   return (
     <div
       className={cn(
         "rounded-xl border p-3",
-        destacado
-          ? "border-ember-200 bg-ember-50 dark:border-ember-800 dark:bg-ember-900/20"
-          : "border-charcoal-100 dark:border-charcoal-700"
+        alerta
+          ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+          : destacado
+            ? "border-ember-200 bg-ember-50 dark:border-ember-800 dark:bg-ember-900/20"
+            : "border-charcoal-100 dark:border-charcoal-700"
       )}
     >
       <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">{etiqueta}</p>
       <p
         className={cn(
           "mt-0.5 font-mono text-lg font-bold",
-          destacado ? "text-ember-600 dark:text-ember-400" : "text-charcoal-900 dark:text-cream"
+          alerta
+            ? "text-red-600 dark:text-red-400"
+            : destacado
+              ? "text-ember-600 dark:text-ember-400"
+              : "text-charcoal-900 dark:text-cream"
         )}
       >
         {valor}

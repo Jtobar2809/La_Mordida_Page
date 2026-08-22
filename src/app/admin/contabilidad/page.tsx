@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { EstadoResultadosView } from "@/components/admin/estado-resultados";
 import { GastosManager } from "@/components/admin/gastos-manager";
 import { ContabilidadTabs } from "@/components/admin/contabilidad-tabs";
+import { RetirosPanel } from "@/components/admin/retiros-panel";
 import { obtenerEstadoResultados, MESES } from "@/lib/contabilidad";
+import { obtenerCupoRetiros } from "@/lib/retiros";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +33,10 @@ export default async function AdminContabilidadPage({
   const desde = new Date(anio, mes - 1, 1);
   const hasta = new Date(anio, mes, 1);
 
-  const [datos, gastos] = await Promise.all([
+  const [datos, gastos, cupoRetiros] = await Promise.all([
     obtenerEstadoResultados(anio, mes),
     prisma.gasto.findMany({ where: { fecha: { gte: desde, lt: hasta } }, orderBy: { fecha: "desc" } }),
+    obtenerCupoRetiros(anio, mes),
   ]);
 
   const opciones = mesesRecientes();
@@ -81,6 +84,8 @@ export default async function AdminContabilidadPage({
       )}
 
       <EstadoResultadosView datos={datos} />
+
+      <RetirosPanel cupo={cupoRetiros} />
 
       <GastosManager gastos={gastos} />
     </div>

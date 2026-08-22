@@ -40,7 +40,14 @@ export type ResumenCaja = {
   totalNequi: number;
   totalOtros: number;
   totalIngresos: number;
+  /** Solo gastos del negocio: los retiros de los socios se cuentan aparte. */
   totalEgresos: number;
+  /**
+   * Lo que los socios sacaron para ellos en el turno. Sale del cajón igual que
+   * un egreso, pero no es un gasto: repartir la ganancia no es un costo de
+   * operar, y sumarlo a `totalEgresos` haría ver el turno más caro de lo que fue.
+   */
+  totalRetiros: number;
   /**
    * Cuánto efectivo FÍSICO debería haber en el cajón ahora mismo. Solo cuentan
    * los movimientos en efectivo: un pago por Nequi entra al celular, no al
@@ -60,6 +67,7 @@ export function calcularResumenCaja(
   let totalOtros = 0;
   let totalIngresos = 0;
   let totalEgresos = 0;
+  let totalRetiros = 0;
   let efectivoNeto = 0; // solo movimientos en efectivo, con su signo
 
   const ordenesVendidas = new Set<string>();
@@ -73,12 +81,17 @@ export function calcularResumenCaja(
       else totalOtros += m.monto;
     } else if (m.tipo === "INGRESO") {
       totalIngresos += m.monto;
+    } else if (m.tipo === "RETIRO") {
+      totalRetiros += m.monto;
     } else {
       totalEgresos += m.monto;
     }
 
     if (m.metodo === "EFECTIVO") {
-      efectivoNeto += m.tipo === "EGRESO" ? -m.monto : m.monto;
+      // Un retiro vacía el cajón exactamente igual que un egreso; lo que cambia
+      // es cómo se lee después, no la plata que queda para dar vueltas.
+      const sale = m.tipo === "EGRESO" || m.tipo === "RETIRO";
+      efectivoNeto += sale ? -m.monto : m.monto;
     }
   }
 
@@ -90,6 +103,7 @@ export function calcularResumenCaja(
     totalOtros,
     totalIngresos,
     totalEgresos,
+    totalRetiros,
     esperadoEfectivo: montoInicial + efectivoNeto,
   };
 }
@@ -143,6 +157,7 @@ export async function obtenerSesionCaja(id: string) {
           totalOtros: sesion.totalOtros ?? 0,
           totalIngresos: sesion.totalIngresos ?? 0,
           totalEgresos: sesion.totalEgresos ?? 0,
+          totalRetiros: sesion.totalRetiros ?? 0,
           esperadoEfectivo: sesion.esperadoEfectivo ?? 0,
         }
       : calcularResumenCaja(sesion.montoInicial, sesion.movimientos);

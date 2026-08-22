@@ -7,6 +7,8 @@ const ingreso = (monto: number, metodo: MovimientoParaArqueo["metodo"] = "EFECTI
   ({ tipo: "INGRESO", metodo, monto, orderId: null }) as MovimientoParaArqueo;
 const egreso = (monto: number, metodo: MovimientoParaArqueo["metodo"] = "EFECTIVO") =>
   ({ tipo: "EGRESO", metodo, monto, orderId: null }) as MovimientoParaArqueo;
+const retiro = (monto: number, metodo: MovimientoParaArqueo["metodo"] = "EFECTIVO") =>
+  ({ tipo: "RETIRO", metodo, monto, orderId: null }) as MovimientoParaArqueo;
 
 describe("calcularResumenCaja", () => {
   it("una caja sin movimientos espera exactamente su base", () => {
@@ -64,5 +66,35 @@ describe("calcularResumenCaja", () => {
     expect(r.totalIngresos).toBe(15000);
     expect(r.esperadoEfectivo).toBe(35000);
     expect(r.totalVentas).toBe(0);
+  });
+
+  it("un retiro de socio vacía el cajón igual que un egreso", () => {
+    const r = calcularResumenCaja(100000, [venta(50000, "EFECTIVO", "o1"), retiro(30000)]);
+    expect(r.esperadoEfectivo).toBe(120000);
+    expect(r.totalRetiros).toBe(30000);
+  });
+
+  it("el retiro NO se cuenta como gasto del turno", () => {
+    // Es la razón de ser del tipo aparte: si el retiro engordara totalEgresos,
+    // el turno se vería más caro de operar de lo que fue y la contabilidad
+    // terminaría restando la plata de los socios dos veces —una como gasto y
+    // otra debajo de la utilidad.
+    const r = calcularResumenCaja(0, [egreso(20000), retiro(50000)]);
+    expect(r.totalEgresos).toBe(20000);
+    expect(r.totalRetiros).toBe(50000);
+  });
+
+  it("un retiro por Nequi no toca el efectivo esperado", () => {
+    const r = calcularResumenCaja(50000, [retiro(40000, "NEQUI")]);
+    expect(r.totalRetiros).toBe(40000);
+    expect(r.esperadoEfectivo).toBe(50000);
+  });
+
+  it("un retiro no infla las ventas ni los ingresos del turno", () => {
+    const r = calcularResumenCaja(80000, [retiro(25000)]);
+    expect(r.totalVentas).toBe(0);
+    expect(r.totalIngresos).toBe(0);
+    expect(r.cantidadVentas).toBe(0);
+    expect(r.esperadoEfectivo).toBe(55000);
   });
 });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowDownLeft, ArrowUpRight, Receipt } from "lucide-react";
+import { ArrowLeft, ArrowDownLeft, ArrowUpRight, HandCoins, Receipt } from "lucide-react";
 import { obtenerSesionCaja } from "@/lib/caja";
 import { ETIQUETA_METODO } from "@/types/caja";
 import { formatCOP, formatDateTime, cn } from "@/lib/utils";
@@ -45,6 +45,7 @@ export default async function AdminCajaSesionDetallePage({ params }: { params: P
           <Fila etiqueta="Ventas en efectivo" valor={resumen.totalEfectivo} />
           <Fila etiqueta="Otros ingresos" valor={resumen.totalIngresos} />
           <Fila etiqueta="Egresos y devoluciones" valor={-resumen.totalEgresos} />
+          {resumen.totalRetiros > 0 && <Fila etiqueta="Retiro de socios" valor={-resumen.totalRetiros} />}
           <div className="!mt-3 border-t border-charcoal-100 pt-3 dark:border-charcoal-700">
             <Fila etiqueta="Esperado en el cajón" valor={resumen.esperadoEfectivo} fuerte />
             {sesion.efectivoContado !== null && <Fila etiqueta="Contado al cerrar" valor={sesion.efectivoContado} fuerte />}
@@ -102,14 +103,21 @@ export default async function AdminCajaSesionDetallePage({ params }: { params: P
         ) : (
           <div className="divide-y divide-charcoal-50 dark:divide-charcoal-700/50">
             {sesion.movimientos.map((movimiento) => {
-              const esSalida = movimiento.tipo === "EGRESO";
-              const Icono = movimiento.tipo === "VENTA" ? Receipt : esSalida ? ArrowUpRight : ArrowDownLeft;
+              const esRetiro = movimiento.tipo === "RETIRO";
+              const esSalida = movimiento.tipo === "EGRESO" || esRetiro;
+              const Icono = movimiento.tipo === "VENTA" ? Receipt : esRetiro ? HandCoins : esSalida ? ArrowUpRight : ArrowDownLeft;
               return (
                 <div key={movimiento.id} className="flex items-center gap-3 py-3 text-sm">
                   <Icono
                     className={cn(
                       "h-4 w-4 shrink-0",
-                      movimiento.tipo === "VENTA" ? "text-charcoal-400" : esSalida ? "text-ember-500" : "text-olive-500"
+                      movimiento.tipo === "VENTA"
+                        ? "text-charcoal-400"
+                        : esRetiro
+                          ? "text-mustard-500"
+                          : esSalida
+                            ? "text-ember-500"
+                            : "text-olive-500"
                     )}
                   />
                   <div className="min-w-0 flex-1">

@@ -61,7 +61,8 @@ export function CierreCajaModal({ sesion, onClose }: { sesion: SesionCajaActiva;
           <Fila etiqueta="Base de apertura" valor={sesion.montoInicial} />
           <Fila etiqueta={`Ventas en efectivo`} valor={resumen.totalEfectivo} />
           <Fila etiqueta="Otros ingresos" valor={resumen.totalIngresos} />
-          <Fila etiqueta="Egresos / retiros" valor={-resumen.totalEgresos} />
+          <Fila etiqueta="Gastos del turno" valor={-resumen.totalEgresos} />
+          {resumen.totalRetiros > 0 && <Fila etiqueta="Retiro de socios" valor={-resumen.totalRetiros} />}
           <div className="mt-2 border-t border-charcoal-100 pt-2 dark:border-charcoal-700">
             <Fila etiqueta="Ventas por Nequi (no entra al cajón)" valor={resumen.totalNequi} atenuado />
             <Fila etiqueta={`Total vendido (${resumen.cantidadVentas} ventas)`} valor={resumen.totalVentas} atenuado />

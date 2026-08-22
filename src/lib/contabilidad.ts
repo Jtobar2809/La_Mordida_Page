@@ -42,8 +42,20 @@ export type EstadoResultados = {
   utilidadNeta: number;
   margenNetoPct: number;
 
-  /** Va debajo de la utilidad: repartir la ganancia no es un costo de operar. */
-  retiro: number;
+  /**
+   * Lo que los socios PLANEAN sacar al mes (los costos fijos marcados como
+   * retiro). Es la meta con la que se calcula el punto de equilibrio: hay que
+   * venderlo igual, se haya sacado o no.
+   */
+  retiroPresupuestado: number;
+  /**
+   * Lo que de verdad salió del cajón este mes, retiro por retiro. Es esto —y
+   * no el presupuesto— lo que se resta para saber cuánta plata quedó adentro.
+   *
+   * Ambos van DEBAJO de la utilidad: repartir la ganancia no es un costo de
+   * operar. Restarlos antes haría ver el negocio menos rentable de lo que es.
+   */
+  retiroReal: number;
   quedaEnNegocio: number;
 
   /** Desglose para el gráfico de a dónde se va la plata. */
@@ -66,7 +78,7 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
 
   const rango = { gte: desde, lt: hasta };
 
-  const [ventasAgg, movimientos, costosFijos, gastos, compras, perdidas] = await Promise.all([
+  const [ventasAgg, movimientos, costosFijos, gastos, compras, perdidas, retiros] = await Promise.all([
     prisma.order.aggregate({
       where: { status: { in: estadosConfirmados }, createdAt: rango },
       _sum: { total: true },
@@ -88,6 +100,10 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
     prisma.compra.aggregate({ where: { fecha: rango }, _sum: { total: true } }),
 
     obtenerPerdidas(desde),
+
+    // Los retiros salen de la caja, no de una tabla de gastos: son plata que
+    // sale del cajón, y por eso viven como movimientos del turno.
+    prisma.movimientoCaja.aggregate({ where: { tipo: "RETIRO", createdAt: rango }, _sum: { monto: true } }),
   ]);
 
   const ventas = ventasAgg._sum?.total ?? 0;
@@ -97,7 +113,8 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
 
   const utilidadBruta = ventas - costoVenta;
 
-  const retiro = costosFijos.filter((c) => c.esRetiro).reduce((s, c) => s + c.monto, 0);
+  const retiroPresupuestado = costosFijos.filter((c) => c.esRetiro).reduce((s, c) => s + c.monto, 0);
+  const retiroReal = retiros._sum?.monto ?? 0;
   const gastosFijos = costosFijos.filter((c) => !c.esRetiro).reduce((s, c) => s + c.monto, 0);
 
   const gastosDelMes = gastos.reduce((s, g) => s + g.monto, 0);
@@ -141,8 +158,12 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
     totalGastos,
     utilidadNeta,
     margenNetoPct: ventas > 0 ? (utilidadNeta / ventas) * 100 : 0,
-    retiro,
-    quedaEnNegocio: utilidadNeta - retiro,
+    retiroPresupuestado,
+    retiroReal,
+    // Con lo REALMENTE retirado, no con el presupuesto: la plata que quedó
+    // adentro es la que nadie sacó, y en un mes donde los socios sacaron menos
+    // (o más) de lo planeado, restar la meta contaría una ficción.
+    quedaEnNegocio: utilidadNeta - retiroReal,
     detalleGastos,
     comprasDelMes,
     variacionInventario: comprasDelMes - costoVenta,

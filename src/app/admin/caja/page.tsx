@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { obtenerCajaAbierta } from "@/lib/caja";
+import { obtenerCupoDelMesActual } from "@/lib/retiros";
 import { CajaWorkspace } from "@/components/admin/caja/caja-workspace";
 import type { CategoriaPOS } from "@/types/caja";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminCajaPage() {
-  const [sesion, categorias] = await Promise.all([
+  const [sesion, cupo, categorias] = await Promise.all([
     obtenerCajaAbierta(),
+    // El cupo de retiros es del MES, no del turno: por eso se consulta aquí y
+    // no sale del arqueo, que solo sabe de las últimas horas.
+    obtenerCupoDelMesActual(),
     prisma.category.findMany({
       where: { active: true },
       orderBy: { order: "asc" },
@@ -54,5 +58,5 @@ export default async function AdminCajaPage() {
       })
     : [];
 
-  return <CajaWorkspace sesion={sesion} catalogo={catalogo} ventas={ventas} />;
+  return <CajaWorkspace sesion={sesion} catalogo={catalogo} ventas={ventas} cupo={cupo} />;
 }

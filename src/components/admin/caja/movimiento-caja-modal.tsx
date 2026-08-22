@@ -66,6 +66,15 @@ export function MovimientoCajaModal({
       }
     >
       <div className="space-y-4">
+        {esEgreso && (
+          // Un retiro anotado como egreso se contaría como costo de operar y
+          // además no descontaría del cupo del mes: las dos cosas que el botón
+          // aparte vino a arreglar. Barato avisarlo aquí.
+          <p className="rounded-xl bg-mustard-50 p-3 text-xs text-mustard-800 dark:bg-mustard-900/20 dark:text-mustard-200">
+            ¿Es plata para los socios? Cierra este modal y usa <strong>Retiro socio</strong>: eso descuenta del cupo del
+            mes y no se cuenta como gasto del negocio.
+          </p>
+        )}
         <div>
           <Label htmlFor="montoMovimiento">Monto</Label>
           <Input

@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { priceOrderItems } from "@/lib/pricing";
 import { descontarInventarioPorOrden, revertirInventarioPorOrden } from "@/lib/inventario";
 import { calcularResumenCaja, generarCodigoSesion, EMAIL_CLIENTE_MOSTRADOR } from "@/lib/caja";
+import { obtenerCupoDelMesActual } from "@/lib/retiros";
 import { formatCOP } from "@/lib/utils";
 import type { ActionResult } from "@/actions/auth";
 import { MetodoPago } from "@prisma/client";
@@ -23,6 +24,9 @@ function revalidarCaja() {
   revalidatePath("/admin/caja/sesiones");
   revalidatePath("/admin/pedidos");
   revalidatePath("/admin/inventario");
+  // Los retiros de socios salen del cajón pero se leen en contabilidad, donde
+  // se comparan contra el cupo del mes.
+  revalidatePath("/admin/contabilidad");
 }
 
 async function obtenerClienteMostrador() {
@@ -120,6 +124,7 @@ export async function cerrarCaja(input: unknown): Promise<ActionResult<{ diferen
       totalOtros: resumen.totalOtros,
       totalIngresos: resumen.totalIngresos,
       totalEgresos: resumen.totalEgresos,
+      totalRetiros: resumen.totalRetiros,
       esperadoEfectivo: resumen.esperadoEfectivo,
       diferencia,
       abiertaLock: null,
@@ -185,6 +190,78 @@ export async function registrarMovimientoCaja(input: unknown): Promise<ActionRes
 
   revalidarCaja();
   return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Retiro de socios
+// ─────────────────────────────────────────────────────────────────────────────
+
+const retiroSchema = z.object({
+  metodo: z.nativeEnum(MetodoPago).default("EFECTIVO"),
+  monto: z.coerce.number().int().positive("El monto debe ser mayor a 0"),
+  concepto: z.string().max(200).optional(),
+});
+
+/**
+ * La plata que los socios sacan para ellos, descontada del cupo del mes.
+ *
+ * Tiene acción propia y no es un EGRESO con otro nombre por dos razones que se
+ * ven en los números: el turno debe poder mostrar "gastos" y "retiros" por
+ * separado, y la contabilidad tiene que seguir restando el retiro debajo de la
+ * utilidad. Un retiro anotado como egreso se contaría dos veces —una como costo
+ * de operar y otra como reparto— y haría ver el negocio en pérdida.
+ *
+ * Dos límites distintos, a propósito:
+ *  - El efectivo del cajón SÍ bloquea: no se puede sacar plata que no está.
+ *  - El cupo mensual solo avisa. Es la plata de los socios; el sistema informa
+ *    cuánto llevan y cuánto se pasaron, pero no les prohíbe sacarla.
+ */
+export async function registrarRetiroSocio(
+  input: unknown
+): Promise<ActionResult<{ retirado: number; saldo: number; exceso: number }>> {
+  let userId: string;
+  try {
+    userId = await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = retiroSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const sesion = await prisma.cajaSesion.findFirst({ where: { estado: "ABIERTA" }, include: { movimientos: true } });
+  if (!sesion) return { success: false, error: "Abre la caja antes de registrar un retiro." };
+
+  const { metodo, monto, concepto } = parsed.data;
+
+  if (metodo === "EFECTIVO") {
+    const { esperadoEfectivo } = calcularResumenCaja(sesion.montoInicial, sesion.movimientos);
+    if (monto > esperadoEfectivo) {
+      return {
+        success: false,
+        error: `No hay tanto efectivo en el cajón. Disponible: ${formatCOP(esperadoEfectivo)}.`,
+      };
+    }
+  }
+
+  await prisma.movimientoCaja.create({
+    data: {
+      sesionId: sesion.id,
+      tipo: "RETIRO",
+      metodo,
+      monto,
+      concepto: concepto?.trim() || "Retiro de socios",
+      createdById: userId,
+    },
+  });
+
+  // Se relee el cupo DESPUÉS de guardar para que el aviso hable del estado
+  // real del mes, incluido este retiro, y no de cómo estaban las cosas cuando
+  // se abrió el modal.
+  const cupo = await obtenerCupoDelMesActual();
+
+  revalidarCaja();
+  return { success: true, data: { retirado: cupo.retirado, saldo: cupo.saldo, exceso: cupo.exceso } };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

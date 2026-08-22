@@ -502,7 +502,10 @@ model CajaSesion {
   totalOtros       Int?
   totalIngresos    Int?
   totalEgresos     Int?
-  /// montoInicial + efectivo de ventas + ingresos − egresos.
+  /// Lo que los socios sacaron para ellos en el turno. Va aparte de
+  /// `totalEgresos` porque repartir la ganancia no es un gasto del negocio.
+  totalRetiros     Int?
+  /// montoInicial + efectivo de ventas + ingresos − egresos − retiros.
   esperadoEfectivo Int?
   /// efectivoContado − esperadoEfectivo. Negativo = falta plata.
   diferencia       Int?
@@ -1017,6 +1020,10 @@ enum MovimientoCajaTipo {
   INGRESO
   /// Plata que sale: pago a proveedor, domicilio, retiro a la caja fuerte.
   EGRESO
+  /// Plata que los socios sacan para ellos. Sale del cajón igual que un
+  /// EGRESO, pero se cuenta aparte: en el estado de resultados va debajo de
+  /// la utilidad, no restando antes de ella.
+  RETIRO
 }
 
 /// Solo los métodos que realmente se reciben hoy. Agregar TARJETA o

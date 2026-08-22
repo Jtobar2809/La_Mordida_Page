@@ -45,7 +45,8 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
     mermas,
     utilidadNeta,
     margenNetoPct,
-    retiro,
+    retiroPresupuestado,
+    retiroReal,
     quedaEnNegocio,
     detalleGastos,
     comprasDelMes,
@@ -101,10 +102,18 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
               {margenNetoPct.toFixed(1)}% de las ventas · {pedidos} pedido{pedidos === 1 ? "" : "s"}
             </p>
           </div>
-          {retiro > 0 && (
+          {(retiroReal > 0 || retiroPresupuestado > 0) && (
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-charcoal-400">Menos retiro de socios</p>
-              <p className="font-mono text-sm text-charcoal-500 dark:text-charcoal-300">−{formatCosto(retiro)}</p>
+              <p className="font-mono text-sm text-charcoal-500 dark:text-charcoal-300">−{formatCosto(retiroReal)}</p>
+              {retiroPresupuestado > 0 && (
+                <p className="text-[11px] text-charcoal-400">
+                  de {formatCosto(retiroPresupuestado)} del cupo
+                  {retiroReal > retiroPresupuestado
+                    ? ` · ${formatCosto(retiroReal - retiroPresupuestado)} por encima`
+                    : ""}
+                </p>
+              )}
               <p className="mt-1 text-xs uppercase tracking-wide text-charcoal-400">Queda en el negocio</p>
               <p className="font-display text-xl text-charcoal-900 dark:text-cream">{formatCosto(quedaEnNegocio)}</p>
             </div>
@@ -226,10 +235,22 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
             {gastosDelMes > 0 && <Fila etiqueta="Gastos del mes" valor={gastosDelMes} signo="−" />}
             {mermas > 0 && <Fila etiqueta="Mermas y pérdidas" valor={mermas} signo="−" />}
             <Fila etiqueta="Utilidad neta" valor={utilidadNeta} destacado nota={`${margenNetoPct.toFixed(1)}%`} />
-            {retiro > 0 && (
+            {(retiroReal > 0 || retiroPresupuestado > 0) && (
               <>
                 <hr className="border-charcoal-100 dark:border-charcoal-700" />
-                <Fila etiqueta="Retiro de socios" valor={retiro} signo="−" />
+                {/* El presupuesto es la meta; lo retirado es lo que pasó. Se
+                    muestran los dos porque son preguntas distintas: uno dice
+                    cuánto hay que vender, el otro cuánto quedó adentro. */}
+                <Fila
+                  etiqueta="Retiro de socios"
+                  valor={retiroReal}
+                  signo="−"
+                  nota={
+                    retiroPresupuestado > 0
+                      ? `cupo ${formatCosto(retiroPresupuestado)}`
+                      : undefined
+                  }
+                />
                 <Fila etiqueta="Queda en el negocio" valor={quedaEnNegocio} destacado />
               </>
             )}
