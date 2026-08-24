@@ -21,7 +21,7 @@ export function EquilibrioPanel({
   panorama: PanoramaOperacion;
   ventasDelMes: number;
 }) {
-  const { totalFijoMes, ventasEquilibrio, ventasEquilibrioDia, pedidosEquilibrioDia, margenContribucion, origenMargen } =
+  const { baseFijaMes, otrosGastosMes, ventasEquilibrio, ventasEquilibrioDia, pedidosEquilibrioDia, margenContribucion, origenMargen } =
     panorama;
 
   if (origenMargen === "SIN_DATOS" || ventasEquilibrio <= 0) {
@@ -65,9 +65,11 @@ export function EquilibrioPanel({
         <Dato label="Llevas este mes" valor={formatCosto(ventasDelMes)} />
         <Dato label="Por día" valor={formatCosto(ventasEquilibrioDia)} nota={pedidosEquilibrioDia !== null ? `${Math.ceil(pedidosEquilibrioDia)} pedidos diarios` : undefined} />
         <Dato
-          label="Gastos fijos"
-          valor={formatCosto(totalFijoMes)}
-          nota={`margen ${(margenContribucion * 100).toFixed(1)}%${origenMargen === "RECETAS" ? " (de recetas)" : ""}`}
+          label="Hay que cubrir al mes"
+          valor={formatCosto(baseFijaMes)}
+          nota={`margen ${(margenContribucion * 100).toFixed(1)}%${origenMargen === "RECETAS" ? " (de recetas)" : ""}${
+            otrosGastosMes > 0 ? ` · incluye ${formatCosto(otrosGastosMes)} de gastos sueltos` : ""
+          }`}
         />
       </div>
 

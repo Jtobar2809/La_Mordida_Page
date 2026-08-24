@@ -5,6 +5,7 @@ import { construirCascada } from "./contabilidad";
 const AGOSTO = {
   ventas: 80000,
   costoVenta: 33923,
+  consumoOperacion: 0,
   utilidadBruta: 46077,
   gastosFijos: 900000,
   gastosDelMes: 0,
@@ -57,6 +58,7 @@ describe("construirCascada", () => {
     const c = construirCascada({
       ventas: 1000000,
       costoVenta: 300000,
+      consumoOperacion: 0,
       utilidadBruta: 700000,
       gastosFijos: 200000,
       gastosDelMes: 100000,
@@ -76,6 +78,7 @@ describe("construirCascada", () => {
     const neta = construirCascada({
       ventas: 3000000,
       costoVenta: 1085000,
+      consumoOperacion: 0,
       utilidadBruta: 1915000,
       gastosFijos: 900000,
       gastosDelMes: 0,
@@ -93,5 +96,29 @@ describe("construirCascada", () => {
       const c = construirCascada(caso);
       expect(c[c.length - 1]!.monto).toBe(caso.utilidadNeta);
     }
+  });
+});
+
+describe("construirCascada · desechables", () => {
+  const CON_DESECHABLES = { ...AGOSTO, consumoOperacion: 6000, utilidadBruta: 40077, utilidadNeta: -859923 };
+
+  it("los desechables bajan desde donde terminaron los insumos", () => {
+    const c = construirCascada(CON_DESECHABLES);
+    const insumos = c.find((t) => t.nombre === "Insumos")!;
+    const desechables = c.find((t) => t.nombre === "Desechables")!;
+    expect(desechables.rango[1]).toBe(insumos.rango[0]);
+    expect(desechables.rango[0]).toBe(insumos.rango[0] - 6000);
+  });
+
+  it("la utilidad bruta queda donde terminó el último costo variable", () => {
+    const c = construirCascada(CON_DESECHABLES);
+    const desechables = c.find((t) => t.nombre === "Desechables")!;
+    expect(desechables.rango[0]).toBe(CON_DESECHABLES.utilidadBruta);
+  });
+
+  it("sin desechables el tramo no existe y la cascada queda como antes", () => {
+    const c = construirCascada(AGOSTO);
+    expect(c.find((t) => t.nombre === "Desechables")).toBeUndefined();
+    expect(c.find((t) => t.nombre === "Insumos")!.rango[0]).toBe(AGOSTO.utilidadBruta);
   });
 });

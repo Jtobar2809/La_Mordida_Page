@@ -153,7 +153,7 @@ export function ConciliacionView({ datos }: { datos: Conciliacion }) {
               <Cifra label="Quedó en despensa" valor={formatCosto(totalComprado - totalConsumido)} />
             </div>
 
-            <Tabla cabeceras={["Insumo", "Comprado", "Consumido", "Diferencia", "En plata"]}>
+            <Tabla cabeceras={["Insumo", "Comprado", "Preparado", "Consumido", "Diferencia", "En plata"]}>
               {insumos.slice(0, 15).map((i) => {
                 const u = UNIDAD_LABEL[i.unidad] ?? i.unidad;
                 return (
@@ -161,6 +161,11 @@ export function ConciliacionView({ datos }: { datos: Conciliacion }) {
                     <td className="px-4 py-2.5 font-medium text-charcoal-900 dark:text-cream">{i.nombre}</td>
                     <td className="px-4 py-2.5 font-mono text-charcoal-400">
                       {redondearCantidad(i.comprado)} {u}
+                    </td>
+                    {/* Un elaborado no se compra: sale de una tanda de cocina.
+                        Sin esta columna aparecía consumiéndose de la nada. */}
+                    <td className="px-4 py-2.5 font-mono text-charcoal-400">
+                      {i.producido > 0 ? `${redondearCantidad(i.producido)} ${u}` : "—"}
                     </td>
                     <td className="px-4 py-2.5 font-mono text-charcoal-400">
                       {redondearCantidad(i.consumido)} {u}
@@ -177,9 +182,10 @@ export function ConciliacionView({ datos }: { datos: Conciliacion }) {
               })}
             </Tabla>
             <p className="mt-2 text-xs text-charcoal-400">
-              Un insumo que consumes mucho más de lo que compras está saliendo de la despensa y en algún momento se
-              acaba. Uno que compras y no consumes está durmiendo plata en la nevera. Para saber si además se está
-              perdiendo, la respuesta está en el conteo físico.
+              Consumido es todo lo que salió del estante: ventas, desechables, tandas de cocina y mermas. Un insumo que
+              consumes mucho más de lo que compras está saliendo de la despensa y en algún momento se acaba. Uno que
+              compras y no consumes está durmiendo plata en la nevera. Para saber si además se está perdiendo, la
+              respuesta está en el conteo físico.
             </p>
           </>
         )}

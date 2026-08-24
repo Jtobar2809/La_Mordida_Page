@@ -154,6 +154,11 @@ async function aplicarDescuento(db: DbClient, orderId: string) {
         costoUnitario: costoPorInsumo.get(insumoId) ?? null,
         motivo: `Venta automática — pedido ${order.id}`,
         orderId: order.id,
+        // Se fecha con el PEDIDO, no con el reloj. Un pedido web hecho el 31 y
+        // confirmado el 1 dejaba la venta en un mes y su costo en el otro:
+        // enero cerraba con una utilidad que no era suya y febrero con un costo
+        // sin venta detrás. El costo tiene que caer donde cayó el ingreso.
+        createdAt: order.createdAt,
       },
     });
   }
@@ -181,8 +186,20 @@ async function aplicarReversion(db: DbClient, orderId: string) {
   if (!data || !data.order.inventarioDescontado) return;
   const { order, consumo } = data;
 
+  // Al costo de la SALIDA original, no al de hoy. Si el insumo subió de precio
+  // entre la venta y la anulación, valorizar la devolución al precio nuevo
+  // dejaba un residuo en el costo de venta: la entrada no cancelaba la salida
+  // que venía a deshacer, y el mes quedaba con una diferencia sin causa.
+  const salidas = await db.movimientoInsumo.findMany({
+    where: { orderId, tipo: "SALIDA" },
+    select: { insumoId: true, costoUnitario: true },
+  });
+  const costoOriginal = new Map(salidas.map((m) => [m.insumoId, m.costoUnitario]));
+
+  // Solo para lo que no tenga salida registrada (recetas cambiadas después de
+  // la venta): ahí lo mejor que se puede saber es el costo actual.
   const insumosInfo = await db.insumo.findMany({ where: { id: { in: [...consumo.keys()] } } });
-  const costoPorInsumo = new Map(insumosInfo.map((i) => [i.id, i.costoUnitario]));
+  const costoActual = new Map(insumosInfo.map((i) => [i.id, i.costoUnitario]));
 
   for (const [insumoId, cantidad] of consumo) {
     await db.insumo.update({ where: { id: insumoId }, data: { stockActual: { increment: cantidad } } });
@@ -191,9 +208,12 @@ async function aplicarReversion(db: DbClient, orderId: string) {
         insumoId,
         tipo: "ENTRADA",
         cantidad,
-        costoUnitario: costoPorInsumo.get(insumoId) ?? null,
+        costoUnitario: costoOriginal.get(insumoId) ?? costoActual.get(insumoId) ?? null,
         motivo: `Reversión automática — pedido ${order.id} cancelado`,
         orderId: order.id,
+        // Misma fecha que la salida que deshace, para que las dos caigan en el
+        // mismo mes y se cancelen donde nacieron.
+        createdAt: order.createdAt,
       },
     });
   }
@@ -207,15 +227,21 @@ async function aplicarReversion(db: DbClient, orderId: string) {
  * el sistema esperaba). Compartido entre el reporte de Mermas y el Dashboard
  * para que ambos siempre muestren el mismo número.
  */
-export async function obtenerPerdidas(desde?: Date) {
+export async function obtenerPerdidas(desde?: Date, hasta?: Date) {
+  // El rango se cierra en el WHERE, no recortando después. Antes esta consulta
+  // pedía "todo desde el 1 de enero" ordenado de lo más nuevo a lo más viejo y
+  // se quedaba con 300 filas: consultar enero devolvía las 300 mermas más
+  // RECIENTES —las de agosto— y el mes de enero cerraba con $0 de mermas.
+  const rango =
+    desde || hasta ? { createdAt: { ...(desde ? { gte: desde } : {}), ...(hasta ? { lt: hasta } : {}) } } : {};
+
   const movimientos = await prisma.movimientoInsumo.findMany({
     where: {
       OR: [{ tipo: "MERMA" }, { tipo: "AJUSTE", cantidad: { lt: 0 } }],
-      ...(desde ? { createdAt: { gte: desde } } : {}),
+      ...rango,
     },
     include: { insumo: { select: { nombre: true, unidad: true, costoUnitario: true } } },
     orderBy: { createdAt: "desc" },
-    take: 300,
   });
 
   const costoDe = (m: (typeof movimientos)[number]) => Math.abs(m.cantidad) * (m.costoUnitario ?? m.insumo.costoUnitario);
@@ -229,5 +255,8 @@ export async function obtenerPerdidas(desde?: Date) {
   }
   const topInsumos = [...porInsumo.values()].sort((a, b) => b.costo - a.costo).slice(0, 5);
 
-  return { movimientos, total, topInsumos, costoDe };
+  // `total` y `topInsumos` se calculan sobre TODO el rango; la tabla solo
+  // pinta las últimas 300, que es lo que un humano llega a mirar. Antes el
+  // recorte estaba en la consulta y por eso se comía los totales.
+  return { movimientos, recientes: movimientos.slice(0, 300), total, topInsumos, costoDe };
 }

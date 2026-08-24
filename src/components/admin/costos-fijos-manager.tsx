@@ -33,6 +33,8 @@ export function CostosFijosManager({ panorama }: { panorama: PanoramaOperacion }
   const {
     costosFijos,
     totalFijoMes,
+    otrosGastosMes,
+    baseFijaMes,
     margenContribucion,
     origenMargen,
     ventasEquilibrio,
@@ -72,7 +74,15 @@ export function CostosFijosManager({ panorama }: { panorama: PanoramaOperacion }
         ) : (
           <>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Dato label="Costos fijos al mes" valor={formatCosto(totalFijoMes)} />
+              <Dato
+                label="Hay que cubrir al mes"
+                valor={formatCosto(baseFijaMes)}
+                nota={
+                  otrosGastosMes > 0
+                    ? `${formatCosto(totalFijoMes)} de fijos + ${formatCosto(otrosGastosMes)} de gastos sueltos`
+                    : "solo costos fijos"
+                }
+              />
               <Dato
                 label="Margen de contribución"
                 valor={pct(margenContribucion)}
@@ -98,9 +108,11 @@ export function CostosFijosManager({ panorama }: { panorama: PanoramaOperacion }
             <p className="mt-4 text-sm text-charcoal-500 dark:text-charcoal-300">
               De cada peso que vendes quedan{" "}
               <strong className="text-charcoal-900 dark:text-cream">{pct(margenContribucion)}</strong> después de pagar
-              los insumos. Ese sobrante es el que tiene que cubrir los {formatCosto(totalFijoMes)} de costos fijos, y
-              para lograrlo necesitas facturar {formatCosto(ventasEquilibrio)} al mes. Todo lo que vendas por encima de
-              ahí es ganancia.
+              los insumos, los desechables y las mermas. Ese sobrante es el que tiene que cubrir los{" "}
+              {formatCosto(baseFijaMes)} que se van cada mes
+              {otrosGastosMes > 0 ? ` (${formatCosto(totalFijoMes)} de fijos y ${formatCosto(otrosGastosMes)} de gastos sueltos)` : ""}
+              , y para lograrlo necesitas facturar {formatCosto(ventasEquilibrio)} al mes. Todo lo que vendas por
+              encima de ahí es ganancia.
             </p>
 
             {ventasReferencia > 0 && (

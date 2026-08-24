@@ -98,3 +98,53 @@ describe("calcularResumenCaja", () => {
     expect(r.esperadoEfectivo).toBe(55000);
   });
 });
+
+describe("calcularResumenCaja · ventas anuladas", () => {
+  /** Anular deja el VENTA original y le suma un EGRESO que lo compensa. */
+  const ventaAnulada = (monto: number, metodo: MovimientoParaArqueo["metodo"], orderId: string) =>
+    [
+      { tipo: "VENTA", metodo, monto, orderId, estadoOrden: "CANCELADO" },
+      { tipo: "EGRESO", metodo, monto, orderId, estadoOrden: "CANCELADO" },
+    ] as MovimientoParaArqueo[];
+
+  it("EL BUG: la venta anulada se contaba como venta y su devolución como gasto", () => {
+    const r = calcularResumenCaja(100000, [venta(28000, "EFECTIVO", "o1"), ...ventaAnulada(35000, "EFECTIVO", "o2")]);
+    expect(r.totalVentas).toBe(28000); // antes: 63000
+    expect(r.totalEgresos).toBe(0); // antes: 35000
+    expect(r.totalAnulaciones).toBe(35000);
+  });
+
+  it("el efectivo sigue cuadrando: la plata entró y volvió a salir", () => {
+    // Esto es lo que no se puede tocar. La anulación no cambia un peso del
+    // arqueo, solo cómo se lee.
+    const r = calcularResumenCaja(100000, [venta(28000, "EFECTIVO", "o1"), ...ventaAnulada(35000, "EFECTIVO", "o2")]);
+    expect(r.esperadoEfectivo).toBe(128000);
+  });
+
+  it("una anulación por Nequi tampoco toca el cajón", () => {
+    const r = calcularResumenCaja(50000, ventaAnulada(20000, "NEQUI", "o3"));
+    expect(r.esperadoEfectivo).toBe(50000);
+    expect(r.totalNequi).toBe(0);
+    expect(r.totalAnulaciones).toBe(20000);
+  });
+
+  it("la venta anulada no cuenta como pedido del turno", () => {
+    const r = calcularResumenCaja(0, [venta(10000, "EFECTIVO", "o1"), ...ventaAnulada(10000, "EFECTIVO", "o2")]);
+    expect(r.cantidadVentas).toBe(1);
+  });
+
+  it("un egreso normal sigue siendo gasto del negocio", () => {
+    // La anulación se reconoce por el pedido cancelado, no por ser un EGRESO:
+    // pagar el pan del día tiene que seguir contando como egreso.
+    const r = calcularResumenCaja(100000, [egreso(15000), ...ventaAnulada(20000, "EFECTIVO", "o4")]);
+    expect(r.totalEgresos).toBe(15000);
+    expect(r.totalAnulaciones).toBe(20000);
+  });
+
+  it("un movimiento sin pedido detrás se comporta como siempre", () => {
+    const r = calcularResumenCaja(0, [venta(9000, "EFECTIVO", null), ingreso(1000), retiro(2000)]);
+    expect(r.totalVentas).toBe(9000);
+    expect(r.totalAnulaciones).toBe(0);
+    expect(r.esperadoEfectivo).toBe(8000);
+  });
+});

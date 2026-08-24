@@ -133,3 +133,82 @@ export const UNIDAD_LABEL: Record<string, string> = {
   LITROS: "l",
   UNIDAD: "unidad",
 };
+
+/**
+ * Todo lo que salió (o volvió) del inventario en un período, separado por la
+ * razón por la que salió.
+ *
+ * Existe porque `costoDeMovimientos` solo sabe de las salidas ligadas a un
+ * pedido, y el estado de resultados la usaba como si fuera TODO el consumo.
+ * No lo es: las bolsas, el papel y los desechables se descuentan a mano
+ * (`registrarConsumoManual`), sin `orderId`, así que bajaban del stock y no
+ * aparecían en ningún renglón del P&L. Se compraban, se gastaban, y la
+ * utilidad seguía diciendo que ahí no había pasado nada.
+ *
+ * Lo que NO es consumo y por eso se descarta aquí:
+ *
+ *  - `PRODUCCION` y cualquier movimiento con `produccionId`: preparar un
+ *    aderezo no gasta plata, mueve valor de unos insumos a otro. El costo se
+ *    reconoce cuando el aderezo se vende.
+ *  - Las `ENTRADA` sin `orderId`: son compras, no consumo.
+ */
+export type MovimientoClasificable = MovimientoValorizable & {
+  orderId?: string | null;
+  produccionId?: string | null;
+};
+
+export type DesgloseConsumo = {
+  /** Insumos de receta que se fueron en ventas, neto de pedidos anulados. */
+  venta: number;
+  /** Desechables y salidas manuales: se consumieron igual, sin pedido detrás. */
+  operacion: number;
+  /** Mermas explícitas y ajustes negativos de un conteo físico. */
+  perdidas: number;
+  /**
+   * Ajustes de conteo hacia arriba: había MÁS de lo que el sistema creía.
+   * No se restan de las pérdidas (el reporte de mermas mide lo que se perdió,
+   * no el neto), pero sí hacen falta para que la variación de inventario cuadre.
+   */
+  ajustesPositivos: number;
+  /** Salida neta de valor del inventario: venta + operación + pérdidas − ajustes. */
+  salidaNeta: number;
+};
+
+export function clasificarConsumo(movimientos: MovimientoClasificable[]): DesgloseConsumo {
+  let venta = 0;
+  let operacion = 0;
+  let perdidas = 0;
+  let ajustesPositivos = 0;
+
+  for (const m of movimientos) {
+    // Valor absoluto: un AJUSTE guarda el signo en `cantidad`, y quién suma o
+    // resta lo decide el bucket, no el signo del número.
+    const costo = Math.abs(m.cantidad) * (m.costoUnitario ?? m.insumo.costoUnitario);
+
+    // Transformación, no consumo: los componentes salen y el elaborado entra
+    // por el mismo valor. Contarlo sería cobrar dos veces la misma mayonesa.
+    if (m.tipo === "PRODUCCION" || m.produccionId) continue;
+
+    if (m.tipo === "SALIDA") {
+      if (m.orderId) venta += costo;
+      else operacion += costo;
+    } else if (m.tipo === "ENTRADA") {
+      // Con pedido es la reversión de una anulación: devuelve costo de venta.
+      // Sin pedido es una compra, y una compra no es consumo.
+      if (m.orderId) venta -= costo;
+    } else if (m.tipo === "MERMA") {
+      perdidas += costo;
+    } else if (m.tipo === "AJUSTE") {
+      if (m.cantidad < 0) perdidas += costo;
+      else ajustesPositivos += costo;
+    }
+  }
+
+  return {
+    venta,
+    operacion,
+    perdidas,
+    ajustesPositivos,
+    salidaNeta: venta + operacion + perdidas - ajustesPositivos,
+  };
+}

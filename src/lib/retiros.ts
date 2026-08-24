@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { vigentesEn } from "@/lib/costos-fijos";
 
 /**
  * Retiros de socios: la plata que los dueños sacan del negocio para vivir.
@@ -82,8 +83,11 @@ export async function obtenerCupoRetiros(anio: number, mes: number): Promise<Cup
   const hasta = new Date(anio, mes, 1);
 
   const [costos, movimientos] = await Promise.all([
+    // El cupo del mes se mide contra el presupuesto que regía ESE mes: si los
+    // socios subieron su retiro en junio, mayo no puede quedar de golpe "por
+    // debajo del cupo" cuando se vuelva a abrir.
     prisma.costoFijo.aggregate({
-      where: { activo: true, esRetiro: true },
+      where: { esRetiro: true, ...vigentesEn(desde, hasta) },
       _sum: { monto: true },
     }),
 

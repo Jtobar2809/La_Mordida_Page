@@ -11,7 +11,7 @@ import { calcularResumenCaja, generarCodigoSesion, EMAIL_CLIENTE_MOSTRADOR } fro
 import { obtenerCupoDelMesActual } from "@/lib/retiros";
 import { formatCOP } from "@/lib/utils";
 import type { ActionResult } from "@/actions/auth";
-import { MetodoPago } from "@prisma/client";
+import { MetodoPago, GastoCategoria } from "@prisma/client";
 
 async function requireAdmin() {
   const session = await auth();
@@ -103,11 +103,16 @@ export async function cerrarCaja(input: unknown): Promise<ActionResult<{ diferen
 
   const sesion = await prisma.cajaSesion.findFirst({
     where: { estado: "ABIERTA" },
-    include: { movimientos: true },
+    // Con el estado del pedido: sin él, el snapshot que se congela al cerrar
+    // volvería a contar las ventas anuladas del turno como ventas.
+    include: { movimientos: { include: { order: { select: { status: true } } } } },
   });
   if (!sesion) return { success: false, error: "No hay ninguna caja abierta." };
 
-  const resumen = calcularResumenCaja(sesion.montoInicial, sesion.movimientos);
+  const resumen = calcularResumenCaja(
+    sesion.montoInicial,
+    sesion.movimientos.map((m) => ({ ...m, estadoOrden: m.order?.status ?? null }))
+  );
   const diferencia = parsed.data.efectivoContado - resumen.esperadoEfectivo;
 
   const actualizadas = await prisma.cajaSesion.updateMany({
@@ -124,6 +129,7 @@ export async function cerrarCaja(input: unknown): Promise<ActionResult<{ diferen
       totalOtros: resumen.totalOtros,
       totalIngresos: resumen.totalIngresos,
       totalEgresos: resumen.totalEgresos,
+      totalAnulaciones: resumen.totalAnulaciones,
       totalRetiros: resumen.totalRetiros,
       esperadoEfectivo: resumen.esperadoEfectivo,
       diferencia,
@@ -148,6 +154,17 @@ const movimientoSchema = z.object({
   metodo: z.nativeEnum(MetodoPago).default("EFECTIVO"),
   monto: z.coerce.number().int().positive("El monto debe ser mayor a 0"),
   concepto: z.string().min(3, "Escribe para qué fue el movimiento").max(200),
+  /**
+   * Qué clase de gasto es, si es que es un gasto. Con categoría, el egreso
+   * también escribe un `Gasto` y aparece en el estado de resultados; sin ella
+   * solo mueve plata.
+   *
+   * `NINGUNA` no es pereza, es una respuesta: pagarle al proveedor de insumos
+   * NO es un gasto del mes (el costo entra cuando el insumo se consume, y
+   * anotarlo aquí lo contaría dos veces), y mover plata a la caja fuerte no
+   * gasta nada. Por eso hay que elegir, y por eso el default es no crear nada.
+   */
+  categoriaGasto: z.nativeEnum(GastoCategoria).nullish(),
 });
 
 /**
@@ -170,7 +187,7 @@ export async function registrarMovimientoCaja(input: unknown): Promise<ActionRes
   const sesion = await prisma.cajaSesion.findFirst({ where: { estado: "ABIERTA" }, include: { movimientos: true } });
   if (!sesion) return { success: false, error: "Abre la caja antes de registrar movimientos." };
 
-  const { tipo, metodo, monto, concepto } = parsed.data;
+  const { tipo, metodo, monto, concepto, categoriaGasto } = parsed.data;
 
   // Un egreso en efectivo no puede sacar más plata de la que hay en el cajón:
   // dejarlo pasar produce un "esperado" negativo que hace imposible cuadrar.
@@ -184,8 +201,39 @@ export async function registrarMovimientoCaja(input: unknown): Promise<ActionRes
     }
   }
 
-  await prisma.movimientoCaja.create({
-    data: { sesionId: sesion.id, tipo, metodo, monto, concepto: concepto.trim(), createdById: userId },
+  // Solo un EGRESO puede ser un gasto. Un INGRESO con categoría sería plata que
+  // entra y a la vez se gasta, que no describe nada.
+  const creaGasto = tipo === "EGRESO" && !!categoriaGasto;
+
+  // Los dos asientos en una transacción: o queda el egreso con su gasto, o no
+  // queda ninguno. Que uno de los dos sobreviva solo es justamente el descuadre
+  // entre libros que este vínculo existe para evitar.
+  await prisma.$transaction(async (tx) => {
+    const gasto = creaGasto
+      ? await tx.gasto.create({
+          data: {
+            fecha: new Date(),
+            concepto: concepto.trim(),
+            monto,
+            categoria: categoriaGasto,
+            metodoPago: metodo,
+            notas: `Egreso del turno ${sesion.codigo}`,
+            createdById: userId,
+          },
+        })
+      : null;
+
+    await tx.movimientoCaja.create({
+      data: {
+        sesionId: sesion.id,
+        tipo,
+        metodo,
+        monto,
+        concepto: concepto.trim(),
+        gastoId: gasto?.id ?? null,
+        createdById: userId,
+      },
+    });
   });
 
   revalidarCaja();

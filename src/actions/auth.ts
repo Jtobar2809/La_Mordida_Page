@@ -24,7 +24,15 @@ const registerSchema = z.object({
  * comprobación que uno quiere tener cuando maneja plata.
  */
 export type ActionResult<T = undefined> =
-  | ([T] extends [undefined] ? { success: true; data?: T } : { success: true; data: T })
+  | ([T] extends [undefined]
+      ? { success: true; data?: T; aviso?: string }
+      : { success: true; data: T; aviso?: string })
+  /**
+   * Salió bien, pero hay algo que la persona tiene que saber. No es un error
+   * —la acción se hizo— y por eso no puede viajar en `error`: un gasto en
+   * efectivo sin caja abierta se guarda igual, pero si nadie avisa, el turno
+   * cierra con un faltante que nadie sabe explicar.
+   */
   | { success: false; error: string };
 
 export async function registerUser(input: unknown): Promise<ActionResult> {

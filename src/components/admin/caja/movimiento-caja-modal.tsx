@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { registrarMovimientoCaja } from "@/actions/admin/caja";
 import { formatCOP } from "@/lib/utils";
+import { ETIQUETA_GASTO } from "@/lib/contabilidad";
 import type { SesionCajaActiva } from "@/types/caja";
 
 /** Conceptos que se repiten todos los días, para no escribirlos a mano. */
@@ -31,6 +32,11 @@ export function MovimientoCajaModal({
   const [monto, setMonto] = React.useState("");
   const [concepto, setConcepto] = React.useState("");
   const [metodo, setMetodo] = React.useState<"EFECTIVO" | "NEQUI" | "OTRO">("EFECTIVO");
+  // "NINGUNA" es una respuesta, no un valor vacío: pagarle al proveedor de
+  // insumos no es un gasto del mes (el costo entra cuando el insumo se
+  // consume), y mover plata a la caja fuerte no gasta nada. Por eso arranca ahí
+  // y hay que elegir para que el egreso llegue al estado de resultados.
+  const [categoriaGasto, setCategoriaGasto] = React.useState<string>("NINGUNA");
   const [cargando, setCargando] = React.useState(false);
 
   const esEgreso = tipo === "EGRESO";
@@ -40,10 +46,22 @@ export function MovimientoCajaModal({
   const guardar = async () => {
     setCargando(true);
     try {
-      const resultado = await registrarMovimientoCaja({ tipo, metodo, monto: Number(monto), concepto });
+      const resultado = await registrarMovimientoCaja({
+        tipo,
+        metodo,
+        monto: Number(monto),
+        concepto,
+        categoriaGasto: esEgreso && categoriaGasto !== "NINGUNA" ? categoriaGasto : null,
+      });
       if (!resultado.success) return toast.error(resultado.error);
 
-      toast.success(esEgreso ? "Egreso registrado" : "Ingreso registrado");
+      toast.success(
+        !esEgreso
+          ? "Ingreso registrado"
+          : categoriaGasto !== "NINGUNA"
+            ? "Egreso registrado y anotado como gasto del mes"
+            : "Egreso registrado (no cuenta como gasto del mes)"
+      );
       onClose();
       router.refresh();
     } catch (error) {
@@ -108,6 +126,29 @@ export function MovimientoCajaModal({
             <option value="OTRO">Otro</option>
           </Select>
         </div>
+
+        {esEgreso && (
+          <div>
+            <Label htmlFor="categoriaGastoMovimiento">¿Es un gasto del negocio?</Label>
+            <Select
+              id="categoriaGastoMovimiento"
+              value={categoriaGasto}
+              onChange={(e) => setCategoriaGasto(e.target.value)}
+            >
+              <option value="NINGUNA">No — solo mueve plata (proveedor de insumos, caja fuerte)</option>
+              {Object.entries(ETIQUETA_GASTO).map(([valor, etiqueta]) => (
+                <option key={valor} value={valor}>
+                  Sí — {etiqueta}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1.5 text-xs text-charcoal-400">
+              {categoriaGasto === "NINGUNA"
+                ? "Sale del cajón pero no baja la utilidad del mes. Es lo correcto para el pago de insumos: ese costo entra cuando el insumo se consume, y anotarlo aquí lo contaría dos veces."
+                : "Además del egreso queda anotado como gasto del mes, así que sí baja la utilidad en Contabilidad."}
+            </p>
+          </div>
+        )}
 
         <div>
           <Label htmlFor="conceptoMovimiento">¿Para qué fue?</Label>

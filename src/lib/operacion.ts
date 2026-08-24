@@ -2,7 +2,8 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
-import { costoDeProducto, costoDeMovimientos } from "@/lib/costos";
+import { costoDeProducto, clasificarConsumo } from "@/lib/costos";
+import { SUMA_VENTA, desglosarVenta } from "@/lib/ventas";
 
 /**
  * Punto de equilibrio y reparto de costos fijos.
@@ -48,10 +49,22 @@ export type OrigenMargen =
 
 export type PanoramaOperacion = {
   costosFijos: { id: string; nombre: string; monto: number; categoria: string; notas: string | null }[];
+  /** Solo la tabla de CostoFijo: el arriendo, la luz, el retiro presupuestado. */
   totalFijoMes: number;
+  /**
+   * Los `Gasto` sueltos del período, llevados a ritmo mensual. Publicidad,
+   * mantenimiento, la olla nueva: no están en CostoFijo, pero hay que pagarlos
+   * igual, así que el equilibrio tiene que cubrirlos o miente.
+   */
+  otrosGastosMes: number;
+  /** Lo que de verdad hay que cubrir cada mes: fijos + otros gastos. */
+  baseFijaMes: number;
 
   origenMargen: OrigenMargen;
-  /** Fracción 0–1: de cada peso vendido, cuánto queda después de los insumos. */
+  /**
+   * Fracción 0–1: de cada peso vendido, cuánto queda después de TODO lo que
+   * sale de la despensa por vender — insumos, desechables y mermas.
+   */
   margenContribucion: number;
 
   /** Ventas mensuales necesarias para no perder plata. */
@@ -84,7 +97,7 @@ export type PanoramaOperacion = {
 export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOperacion> {
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
-  const [costosFijos, settings, ventas, movimientosVenta, productos] = await Promise.all([
+  const [costosFijos, settings, ventas, movimientos, gastosSueltos, productos] = await Promise.all([
     prisma.costoFijo.findMany({
       where: { activo: true },
       orderBy: [{ categoria: "asc" }, { monto: "desc" }],
@@ -93,7 +106,7 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
     getSettings(),
     prisma.order.aggregate({
       where: { status: { in: estadosConfirmados }, createdAt: { gte: desde } },
-      _sum: { total: true },
+      _sum: SUMA_VENTA,
       _count: { _all: true },
     }),
     // SALIDA y ENTRADA: cancelar un pedido no borra la salida, crea una entrada
@@ -102,10 +115,24 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
     // cancelado de $28.000 inflaba el costo en los $16.208 de su receta.
     // Restando las entradas el libro mayor se cuadra solo, y también aguanta el
     // caso de un pedido que se cancela y se vuelve a confirmar.
+    // TODOS los movimientos del período. El margen de contribución tiene que
+    // descontar todo lo variable, no solo la carne: las bolsas se gastan por
+    // pedido igual que el pan, y las mermas suben con el volumen. Dejarlas
+    // fuera inflaba el margen y con él subestimaba el punto de equilibrio —
+    // justo el número que dice cuánto hay que vender para no perder.
     prisma.movimientoInsumo.findMany({
-      where: { tipo: { in: ["SALIDA", "ENTRADA"] }, orderId: { not: null }, createdAt: { gte: desde } },
-      include: { insumo: { select: { costoUnitario: true } } },
+      where: { createdAt: { gte: desde } },
+      select: {
+        tipo: true,
+        cantidad: true,
+        costoUnitario: true,
+        orderId: true,
+        produccionId: true,
+        insumo: { select: { costoUnitario: true } },
+      },
     }),
+    prisma.gasto.aggregate({ where: { fecha: { gte: desde } }, _sum: { monto: true } }),
+
     prisma.product.findMany({
       where: { available: true },
       include: {
@@ -121,9 +148,26 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
 
   const totalFijoMes = costosFijos.reduce((sum, c) => sum + c.monto, 0);
 
-  const ingresosReales = ventas._sum?.total ?? 0;
+  // Los `Gasto` del período llevados a ritmo mensual. La ventana por defecto es
+  // de 30 días, pero puede ser de 7 o de 90: sin la regla de tres, mirar los
+  // últimos 7 días haría parecer que la publicidad del mes cuesta lo de una
+  // semana.
+  const otrosGastosMes = Math.round(((gastosSueltos._sum?.monto ?? 0) * 30) / dias);
+
+  // Lo que hay que cubrir todos los meses. Antes el equilibrio se calculaba
+  // solo con CostoFijo, así que la publicidad, el mantenimiento y los
+  // domicilios pagados aparte no contaban: la pantalla decía que con vender X
+  // ya no se perdía plata, y con X se seguía perdiendo.
+  const baseFijaMes = totalFijoMes + otrosGastosMes;
+
+  // Sin domicilio ni impuesto: el domicilio no tiene costo de insumo detrás, y
+  // meterlo en el numerador infla el margen de contribución — que es
+  // exactamente el número que divide los fijos para dar el punto de equilibrio.
+  const { ventas: ingresosReales } = desglosarVenta(ventas);
   const pedidosReales = ventas._count._all;
-  const cogsReal = costoDeMovimientos(movimientosVenta);
+  // salidaNeta = insumos de venta + desechables + mermas − ajustes a favor.
+  // Todo lo que la despensa entregó para poder vender.
+  const cogsReal = clasificarConsumo(movimientos).salidaNeta;
 
   // Margen: se prefiere lo que de verdad pasó. Solo si no hay ventas se recurre
   // a las recetas, y se dice de dónde salió para que nadie confunda una
@@ -163,7 +207,7 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
 
   // Punto de equilibrio: cuánto hay que vender para que el margen de
   // contribución alcance exactamente a pagar los fijos.
-  const ventasEquilibrio = margenContribucion > 0 ? totalFijoMes / margenContribucion : 0;
+  const ventasEquilibrio = margenContribucion > 0 ? baseFijaMes / margenContribucion : 0;
 
   const ticketReal = muestraSuficiente ? ingresosReales / pedidosReales : null;
   const ticketEstimado = Number(settings.ticketPromedioEstimado) || 0;
@@ -190,7 +234,7 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
   // una tasa del 4875%, o sea $1.560.000 de "operación" en una hamburguesa de
   // $32.000.
   const baseTasa = ventasEstimadasMes > 0 ? ventasEstimadasMes : ingresosReales;
-  const tasaCruda = baseTasa > 0 ? totalFijoMes / baseTasa : null;
+  const tasaCruda = baseTasa > 0 ? baseFijaMes / baseTasa : null;
   // Una tasa por encima de 1 significa que los fijos se comen más que todo lo
   // vendido. Repartirla igual produciría "costos" mayores que el precio de
   // venta, que no informan nada; lo que hay que decir en ese caso es que el
@@ -202,6 +246,8 @@ export async function obtenerPanoramaOperacion(dias = 30): Promise<PanoramaOpera
   return {
     costosFijos,
     totalFijoMes,
+    otrosGastosMes,
+    baseFijaMes,
     origenMargen,
     margenContribucion,
     ventasEquilibrio,

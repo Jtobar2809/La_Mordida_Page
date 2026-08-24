@@ -1,7 +1,8 @@
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
-import { costoDeMovimientos } from "@/lib/costos";
+import { clasificarConsumo } from "@/lib/costos";
+import { SUMA_VENTA, desglosarVenta } from "@/lib/ventas";
 
 /**
  * Conciliación: comparar fuentes que deberían decir lo mismo y señalar dónde no.
@@ -39,7 +40,11 @@ export type InsumoConciliado = {
   nombre: string;
   unidad: string;
   comprado: number;
+  /** Lo que salió de una tanda de cocina. Un elaborado no se compra, se prepara. */
+  producido: number;
+  /** TODO lo que salió: ventas, desechables, tandas de cocina y mermas. */
   consumido: number;
+  /** comprado + producido − consumido: lo que debería haber quedado en la nevera. */
   diferencia: number;
   valorDiferencia: number;
 };
@@ -98,14 +103,26 @@ export async function obtenerConciliacion(anio: number, mes: number): Promise<Co
       select: { cantidad: true, costoUnitario: true, insumo: { select: { id: true, nombre: true, unidad: true } } },
     }),
 
+    // TODOS los movimientos, no solo los que cuelgan de un pedido. Con el filtro
+    // viejo esta tabla mentía de dos formas a la vez: la mayonesa que se va a
+    // un aderezo se consume sin pedido, así que salía con "consumido 0" y un
+    // sobrante fantasma permanente; y el aderezo, que no se compra nunca,
+    // salía con un déficit igual de permanente. Los desechables, lo mismo.
     prisma.movimientoInsumo.findMany({
-      where: { tipo: { in: ["SALIDA", "ENTRADA"] }, orderId: { not: null }, createdAt: rango },
-      select: { cantidad: true, tipo: true, costoUnitario: true, insumo: { select: { id: true, nombre: true, unidad: true, costoUnitario: true } } },
+      where: { createdAt: rango },
+      select: {
+        cantidad: true,
+        tipo: true,
+        costoUnitario: true,
+        orderId: true,
+        produccionId: true,
+        insumo: { select: { id: true, nombre: true, unidad: true, costoUnitario: true } },
+      },
     }),
 
     prisma.order.aggregate({
       where: { canal: "WEB", status: { in: estadosConfirmados }, createdAt: rango },
-      _sum: { total: true },
+      _sum: SUMA_VENTA,
     }),
   ]);
 
@@ -144,7 +161,16 @@ export async function obtenerConciliacion(anio: number, mes: number): Promise<Co
 
   const asegurar = (id: string, nombre: string, unidad: string, costo: number) => {
     if (!porInsumo.has(id)) {
-      porInsumo.set(id, { nombre, unidad, comprado: 0, consumido: 0, diferencia: 0, valorDiferencia: 0, costo });
+      porInsumo.set(id, {
+        nombre,
+        unidad,
+        comprado: 0,
+        producido: 0,
+        consumido: 0,
+        diferencia: 0,
+        valorDiferencia: 0,
+        costo,
+      });
     }
     return porInsumo.get(id)!;
   };
@@ -156,24 +182,43 @@ export async function obtenerConciliacion(anio: number, mes: number): Promise<Co
 
   for (const m of movimientosInsumo) {
     const fila = asegurar(m.insumo.id, m.insumo.nombre, m.insumo.unidad, m.costoUnitario ?? m.insumo.costoUnitario);
-    // Una ENTRADA con orderId es la reversión de un pedido cancelado: resta
-    // consumo, no lo suma.
-    fila.consumido += m.tipo === "ENTRADA" ? -m.cantidad : m.cantidad;
+
+    if (m.tipo === "PRODUCCION") {
+      // Un elaborado no se compra: sale de una tanda. Sin esta columna, el
+      // aderezo aparecía consumiéndose de la nada.
+      fila.producido += m.cantidad;
+    } else if (m.tipo === "SALIDA") {
+      // Con pedido, sin pedido o hacia una tanda de cocina: en los tres casos
+      // el insumo se fue del estante, que es lo que esta tabla mide.
+      fila.consumido += m.cantidad;
+    } else if (m.tipo === "ENTRADA") {
+      // Con pedido es la reversión de una anulación: devuelve lo consumido.
+      // Sin pedido es una compra, y las compras ya vienen de CompraItem —
+      // sumarla aquí la contaría dos veces.
+      if (m.orderId) fila.consumido -= m.cantidad;
+    } else if (m.tipo === "MERMA") {
+      fila.consumido += Math.abs(m.cantidad);
+    } else if (m.tipo === "AJUSTE") {
+      // Un ajuste negativo es faltante que apareció al contar: se fue igual.
+      // Uno positivo es lo contrario, había de más.
+      fila.consumido += -m.cantidad;
+    }
   }
 
   const insumos: InsumoConciliado[] = [...porInsumo.values()]
     .map((f) => {
-      const diferencia = f.comprado - f.consumido;
+      const diferencia = f.comprado + f.producido - f.consumido;
       return {
         nombre: f.nombre,
         unidad: f.unidad,
         comprado: f.comprado,
+        producido: f.producido,
         consumido: f.consumido,
         diferencia,
         valorDiferencia: diferencia * f.costo,
       };
     })
-    .filter((f) => f.comprado !== 0 || f.consumido !== 0)
+    .filter((f) => f.comprado !== 0 || f.producido !== 0 || f.consumido !== 0)
     .sort((a, b) => Math.abs(b.valorDiferencia) - Math.abs(a.valorDiferencia));
 
   return {
@@ -188,10 +233,14 @@ export async function obtenerConciliacion(anio: number, mes: number): Promise<Co
     cobradoEnCaja,
     diferenciaVentas: ventasMostrador - cobradoEnCaja,
     ventasSinRastro,
-    ventasWeb: ordenesWeb._sum?.total ?? 0,
+    ventasWeb: desglosarVenta(ordenesWeb).ventas,
 
     insumos,
     totalComprado: compraItems.reduce((s, ci) => s + ci.cantidad * ci.costoUnitario, 0),
-    totalConsumido: costoDeMovimientos(movimientosInsumo),
+    // En valor sí se descartan las tandas de cocina: preparar un aderezo mueve
+    // plata de unos insumos a otro, no la gasta. En cantidades la tabla de
+    // arriba sí las muestra, porque ahí la pregunta es otra —qué salió del
+    // estante— y son dos preguntas distintas a propósito.
+    totalConsumido: clasificarConsumo(movimientosInsumo).salidaNeta,
   };
 }

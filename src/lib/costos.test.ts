@@ -6,6 +6,7 @@ import {
   costoDeReceta,
   costoDeProducto,
   costoDeMovimientos,
+  clasificarConsumo,
   redondearCosto,
   redondearCantidad,
 } from "./costos";
@@ -157,5 +158,109 @@ describe("redondeos", () => {
   it("un valor no finito se vuelve 0 en vez de propagarse", () => {
     expect(redondearCosto(Infinity)).toBe(0);
     expect(redondearCantidad(NaN)).toBe(0);
+  });
+});
+
+describe("clasificarConsumo", () => {
+  const m = (
+    tipo: string,
+    cantidad: number,
+    costoUnitario: number | null,
+    extra: { orderId?: string | null; produccionId?: string | null; costoInsumo?: number } = {}
+  ) => ({
+    tipo,
+    cantidad,
+    costoUnitario,
+    orderId: extra.orderId ?? null,
+    produccionId: extra.produccionId ?? null,
+    insumo: { costoUnitario: extra.costoInsumo ?? 0 },
+  });
+
+  it("EL BUG: los desechables se consumían y no aparecían en ningún lado", () => {
+    // 200 bolsas a $150 salieron del stock con `registrarConsumoManual`, sin
+    // pedido detrás. `costoDeMovimientos` no las veía y el estado de resultados
+    // reportaba $30.000 de utilidad que no existían.
+    const bolsas = [m("SALIDA", 200, 150)];
+    expect(costoDeMovimientos(bolsas)).toBe(30000); // la función vieja sí las suma...
+    // ...pero el P&L filtraba `orderId: { not: null }` antes de llamarla, así
+    // que nunca le llegaban. Ahora llegan y caen en su propio renglón.
+    expect(clasificarConsumo(bolsas).venta).toBe(0);
+    expect(clasificarConsumo(bolsas).operacion).toBe(30000);
+  });
+
+  it("separa lo que se fue en ventas de lo que se fue en desechables", () => {
+    const d = clasificarConsumo([
+      m("SALIDA", 260, 28, { orderId: "ped_1" }),
+      m("SALIDA", 200, 150),
+    ]);
+    expect(d.venta).toBe(260 * 28);
+    expect(d.operacion).toBe(30000);
+  });
+
+  it("una anulación devuelve costo de venta, no suma consumo de operación", () => {
+    const d = clasificarConsumo([
+      m("SALIDA", 390, 28, { orderId: "ped_2" }),
+      m("ENTRADA", 390, 28, { orderId: "ped_2" }),
+    ]);
+    expect(d.venta).toBe(0);
+    expect(d.operacion).toBe(0);
+  });
+
+  it("una compra es una ENTRADA sin pedido, y no es consumo", () => {
+    expect(clasificarConsumo([m("ENTRADA", 3000, 8.3333)]).salidaNeta).toBe(0);
+  });
+
+  it("preparar un elaborado mueve valor, no lo gasta", () => {
+    // 400 g de mayonesa entran a una tanda de aderezo: los componentes salen y
+    // el elaborado entra por el mismo valor. Contarlo sería cobrar dos veces la
+    // misma mayonesa: una al prepararla y otra al vender la hamburguesa.
+    const d = clasificarConsumo([
+      m("SALIDA", 400, 20, { produccionId: "prod_1" }),
+      m("PRODUCCION", 700, 11.4286, { produccionId: "prod_1" }),
+    ]);
+    expect(d.venta).toBe(0);
+    expect(d.operacion).toBe(0);
+    expect(d.salidaNeta).toBe(0);
+  });
+
+  it("mermas y ajustes negativos son pérdida; el signo lo pone el bucket", () => {
+    const d = clasificarConsumo([
+      m("MERMA", 500, 28),
+      m("AJUSTE", -120, 28), // el conteo encontró menos de lo esperado
+    ]);
+    expect(d.perdidas).toBe(500 * 28 + 120 * 28);
+  });
+
+  it("un ajuste hacia arriba no borra la merma, pero sí cuadra el inventario", () => {
+    // El reporte de mermas mide lo que se perdió, no el neto: si se netearan,
+    // un conteo generoso taparía una merma real. Pero la despensa sí tiene ese
+    // insumo de más, así que la variación de inventario tiene que verlo.
+    const d = clasificarConsumo([m("MERMA", 100, 10), m("AJUSTE", 40, 10)]);
+    expect(d.perdidas).toBe(1000);
+    expect(d.ajustesPositivos).toBe(400);
+    expect(d.salidaNeta).toBe(600);
+  });
+
+  it("salidaNeta suma las tres razones por las que baja el stock", () => {
+    const d = clasificarConsumo([
+      m("SALIDA", 10, 100, { orderId: "ped_3" }),
+      m("SALIDA", 5, 100),
+      m("MERMA", 2, 100),
+    ]);
+    expect(d.salidaNeta).toBe(1700);
+  });
+
+  it("cae al costo del insumo cuando el movimiento no guardó el suyo", () => {
+    expect(clasificarConsumo([m("SALIDA", 10, null, { costoInsumo: 5 })]).operacion).toBe(50);
+  });
+
+  it("sin movimientos todo es cero, no NaN", () => {
+    expect(clasificarConsumo([])).toEqual({
+      venta: 0,
+      operacion: 0,
+      perdidas: 0,
+      ajustesPositivos: 0,
+      salidaNeta: 0,
+    });
   });
 });

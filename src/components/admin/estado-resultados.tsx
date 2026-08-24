@@ -37,7 +37,10 @@ const NEUTRO_CLARO = "#4E4436";
 export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
   const {
     ventas,
+    domicilios,
+    impuestos,
     costoVenta,
+    consumoOperacion,
     utilidadBruta,
     margenBrutoPct,
     gastosFijos,
@@ -58,8 +61,18 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
   // componente: ahí se pueden probar sin montar React, y ahí vivía el bug que
   // dibujaba una pérdida como si fuera ganancia.
   const cascada = React.useMemo(
-    () => construirCascada({ ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta }),
-    [ventas, costoVenta, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta]
+    () =>
+      construirCascada({
+        ventas,
+        costoVenta,
+        consumoOperacion,
+        utilidadBruta,
+        gastosFijos,
+        gastosDelMes,
+        mermas,
+        utilidadNeta,
+      }),
+    [ventas, costoVenta, consumoOperacion, utilidadBruta, gastosFijos, gastosDelMes, mermas, utilidadNeta]
   );
 
   // Un resultado negativo se pinta como salida: una pérdida no es un subtotal
@@ -68,7 +81,7 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
     b.rol === "entra" ? ENTRA : b.rol === "sale" ? SALE : b.monto < 0 ? SALE : NEUTRO_CLARO;
   const enGanancia = utilidadNeta >= 0;
 
-  if (ventas === 0 && costoVenta === 0) {
+  if (ventas === 0 && costoVenta === 0 && consumoOperacion === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-charcoal-200 p-10 text-center text-sm text-charcoal-400 dark:border-charcoal-600">
         No hay ventas registradas en este mes todavía.
@@ -227,8 +240,11 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
           <h2 className="mb-4 font-display text-lg tracking-wide text-charcoal-900 dark:text-cream">EL CUADRE</h2>
 
           <dl className="space-y-2.5 text-sm">
-            <Fila etiqueta="Ventas" valor={ventas} signo="+" />
+            <Fila etiqueta="Ventas" valor={ventas} signo="+" nota="comida, sin domicilio ni impuesto" />
             <Fila etiqueta="Insumos consumidos" valor={costoVenta} signo="−" />
+            {consumoOperacion > 0 && (
+              <Fila etiqueta="Desechables y empaque" valor={consumoOperacion} signo="−" />
+            )}
             <Fila etiqueta="Utilidad bruta" valor={utilidadBruta} destacado nota={`${margenBrutoPct.toFixed(1)}%`} />
             <hr className="border-charcoal-100 dark:border-charcoal-700" />
             <Fila etiqueta="Gastos fijos" valor={gastosFijos} signo="−" />
@@ -256,12 +272,34 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
             )}
           </dl>
 
+          {(domicilios > 0 || impuestos > 0) && (
+            // Ni lo uno ni lo otro es ingreso del negocio, pero pasan por la
+            // caja y hay que poder verlos: el domicilio entra y vuelve a salir
+            // hacia el domiciliario, y el impuesto es plata de la DIAN.
+            <div className="mt-4 rounded-xl border border-dashed border-charcoal-200 p-3 text-xs text-charcoal-500 dark:border-charcoal-600 dark:text-charcoal-300">
+              <p className="mb-1.5 font-medium uppercase tracking-wide text-charcoal-400">Cobrado aparte</p>
+              {domicilios > 0 && (
+                <p>
+                  Domicilios: <strong>{formatCosto(domicilios)}</strong> — entra y vuelve a salir hacia quien reparte.
+                  Si le pagaste al domiciliario, ese pago va como gasto.
+                </p>
+              )}
+              {impuestos > 0 && (
+                <p className="mt-1">
+                  Impuesto recaudado: <strong>{formatCosto(impuestos)}</strong> — es plata de la DIAN que estás
+                  guardando, no utilidad tuya.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="mt-5 flex items-start gap-2 rounded-xl bg-charcoal-50 p-3 text-xs text-charcoal-500 dark:bg-charcoal-900/40 dark:text-charcoal-300">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p>
-                Le pagaste <strong>{formatCosto(comprasDelMes)}</strong> a proveedores este mes, pero solo consumiste{" "}
-                <strong>{formatCosto(costoVenta)}</strong> en insumos.
+                Le pagaste <strong>{formatCosto(comprasDelMes)}</strong> a proveedores este mes, y de la despensa
+                salieron <strong>{formatCosto(costoVenta + consumoOperacion + mermas)}</strong> entre insumos,
+                desechables y mermas.
               </p>
               <p className="mt-1">
                 {variacionInventario > 0

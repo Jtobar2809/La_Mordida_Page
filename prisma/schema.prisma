@@ -502,6 +502,11 @@ model CajaSesion {
   totalOtros       Int?
   totalIngresos    Int?
   totalEgresos     Int?
+  /// Plata devuelta por ventas anuladas del turno. Va aparte de `totalEgresos`
+  /// porque deshacer una venta no es gastar: sin este renglón el arqueo
+  /// congelado no cuadra —ventas más ingresos menos egresos no daba el efectivo
+  /// esperado— y la devolución se leía como un costo de operar.
+  totalAnulaciones Int?
   /// Lo que los socios sacaron para ellos en el turno. Va aparte de
   /// `totalEgresos` porque repartir la ganancia no es un gasto del negocio.
   totalRetiros     Int?
@@ -538,11 +543,25 @@ model MovimientoCaja {
   monto       Int
   concepto    String
   orderId     String?
+  /// El gasto contable que este egreso produjo, si produjo alguno.
+  ///
+  /// Existe porque los dos libros vivían separados y se contradecían: pagarle
+  /// al domiciliario con plata del cajón salía del arqueo pero NUNCA del estado
+  /// de resultados, y un `Gasto` en efectivo anotado aparte vaciaba el cajón
+  /// sin que la caja se enterara, dejando un faltante que nadie sabía explicar.
+  /// Con el vínculo, una sola acción escribe en los dos y se puede auditar cuál
+  /// egreso corresponde a cuál gasto.
+  ///
+  /// No todo egreso lo tiene, y a propósito: pagarle al proveedor de insumos no
+  /// es un gasto (el costo entra cuando el insumo se consume), y mover plata a
+  /// la caja fuerte no gasta nada.
+  gastoId     String?            @unique
   createdById String?
   createdAt   DateTime           @default(now())
 
   sesion CajaSesion @relation(fields: [sesionId], references: [id], onDelete: Cascade)
   order  Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  gasto  Gasto?     @relation(fields: [gastoId], references: [id], onDelete: SetNull)
 
   @@index([sesionId])
   @@index([tipo])
@@ -833,9 +852,20 @@ model RateLimit {
 /// dividirlo, y si esa cifra falla el "costo" del plato cambia sin que nada haya
 /// cambiado en la cocina. Aquí se guardan enteros y por mes; repartirlos es una
 /// decisión de análisis (ver src/lib/operacion.ts), no un dato del producto.
+/// Un gasto que se paga así no se venda nada: el arriendo, la luz, el internet.
+///
+/// La fila NO se edita en el tiempo, se VERSIONA. Cambiar el monto cierra la
+/// fila vigente y abre una nueva, porque un estado de resultados de enero tiene
+/// que seguir diciendo lo que decía en enero. Antes se leía `activo: true` para
+/// cualquier mes consultado, así que subir el arriendo en octubre reescribía
+/// enero con el arriendo de octubre, y desactivar un costo lo borraba de todos
+/// los meses cerrados. Un período cerrado no puede cambiar solo.
+///
+/// Por eso `nombre` ya no es único: "Arriendo" existe una vez por cada monto
+/// que tuvo a lo largo del tiempo.
 model CostoFijo {
   id        String             @id @default(cuid())
-  nombre    String             @unique
+  nombre    String
   /// Valor mensual en COP. Un gasto anual (la licencia, el seguro) se divide
   /// entre 12 antes de anotarlo, para que todo en esta tabla sea comparable.
   monto     Int
@@ -847,11 +877,22 @@ model CostoFijo {
   /// es. Marcado con un flag y no por el nombre, que se puede editar.
   esRetiro  Boolean            @default(false)
   notas     String?
+  /// Atajo de lectura para las pantallas que preguntan "¿qué se paga HOY?".
+  /// La verdad de qué mes cuenta cada fila está en la vigencia, no aquí.
   activo    Boolean            @default(true)
+  /// Primer instante en que este monto aplica. Se ancla al día 1 del mes: un
+  /// fijo se paga entero o no se paga, prorratearlo por días no describe nada.
+  vigenteDesde DateTime        @default(now())
+  /// Primer instante en que YA NO aplica — exclusivo, igual que el `lt` de las
+  /// consultas por mes. Que sea exclusivo es lo que evita que la fila vieja y
+  /// la nueva se cuenten las dos en el mes del cambio. Null = sigue vigente.
+  vigenteHasta DateTime?
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
   @@index([activo])
+  @@index([nombre])
+  @@index([vigenteDesde])
 }
 
 /// Un gasto suelto que no es insumo ni recurrente: la reparación de la
@@ -873,6 +914,8 @@ model Gasto {
   createdById String?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  /// El egreso de caja del que salió, si salió de la caja. Ver MovimientoCaja.
+  movimientoCaja MovimientoCaja?
 
   @@index([fecha])
   @@index([categoria])

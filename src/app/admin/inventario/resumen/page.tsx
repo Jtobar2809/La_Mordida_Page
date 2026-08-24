@@ -3,7 +3,8 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { InventarioTabs } from "@/components/admin/inventario-tabs";
 import { ESTADOS_VENTA_CONFIRMADA, obtenerPerdidas } from "@/lib/inventario";
-import { formatCosto, costoDeMovimientos } from "@/lib/costos";
+import { formatCosto, clasificarConsumo } from "@/lib/costos";
+import { SUMA_VENTA, desglosarVenta } from "@/lib/ventas";
 
 export const dynamic = "force-dynamic";
 
@@ -40,32 +41,29 @@ export default async function AdminResumenPage({
             gte: desde,
           },
         },
-        _sum: {
-          total: true,
-        },
+        _sum: SUMA_VENTA,
         _count: {
           _all: true,
         },
       }),
 
-      // SALIDA y ENTRADA, no solo SALIDA: cancelar un pedido no borra la salida
-      // de inventario, crea una entrada que la compensa. Contando solo las
-      // salidas, cada cancelación sumaba al costo de venta como si la comida se
-      // hubiera consumido — un pedido cancelado de $28.000 inflaba el costo en
-      // los $16.208 de su receta y hundía el margen bruto sin explicación.
+      // TODOS los movimientos del período: `clasificarConsumo` los separa entre
+      // lo que se fue en ventas, lo que se fue en desechables y lo que se
+      // perdió. Con el filtro viejo (`orderId: { not: null }`) las bolsas y el
+      // papel bajaban del stock sin aparecer en ningún costo, y el margen bruto
+      // salía mejor de lo que era.
       prisma.movimientoInsumo.findMany({
         where: {
-          tipo: {
-            in: ["SALIDA", "ENTRADA"],
-          },
-          orderId: {
-            not: null,
-          },
           createdAt: {
             gte: desde,
           },
         },
-        include: {
+        select: {
+          tipo: true,
+          cantidad: true,
+          costoUnitario: true,
+          orderId: true,
+          produccionId: true,
           insumo: {
             select: {
               costoUnitario: true,
@@ -88,11 +86,10 @@ export default async function AdminResumenPage({
         },
       }),
 
-      prisma.insumo.findMany({
-        where: {
-          activo: true,
-        },
-      }),
+      // Sin filtrar por `activo`: un insumo que se desactivó pero todavía tiene
+      // producto en la nevera sigue siendo plata del negocio, y ocultarlo hacía
+      // que el valor del inventario cayera de golpe sin que nadie gastara nada.
+      prisma.insumo.findMany(),
 
       prisma.product.findMany({
         where: {
@@ -111,10 +108,13 @@ export default async function AdminResumenPage({
     ]);
 
   // Prisma puede devolver _sum como undefined cuando no existen registros.
-  const ingresos = ventas._sum?.total ?? 0;
+  // Sin domicilio ni impuesto: ninguno de los dos es venta del negocio.
+  const { ventas: ingresos } = desglosarVenta(ventas);
   const cantidadPedidos = ventas._count._all;
 
-  const cogs = costoDeMovimientos(movimientosVenta);
+  const consumo = clasificarConsumo(movimientosVenta);
+  // Insumos + desechables: los dos son costo de vender.
+  const cogs = consumo.venta + consumo.operacion;
 
   const margenBruto = ingresos - cogs;
 
@@ -129,11 +129,16 @@ export default async function AdminResumenPage({
     0
   );
 
-  const stockBajo = insumos.filter(
+  // Las alertas sí son solo de lo activo: un insumo que ya no se usa no tiene
+  // por qué pedir que lo repongan. Lo que se cuenta en plata (arriba) es otra
+  // cosa — eso sigue en la nevera aunque esté desactivado.
+  const enUso = insumos.filter((insumo) => insumo.activo);
+
+  const stockBajo = enUso.filter(
     (insumo) => insumo.stockActual <= insumo.stockMinimo
   ).length;
 
-  const sinCosto = insumos.filter(
+  const sinCosto = enUso.filter(
     (insumo) => insumo.costoUnitario === 0
   ).length;
 

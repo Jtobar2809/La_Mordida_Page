@@ -29,6 +29,16 @@ export type MovimientoParaArqueo = {
   metodo: MetodoPago;
   monto: number;
   orderId: string | null;
+  /**
+   * Estado del pedido al que pertenece el movimiento, si pertenece a alguno.
+   *
+   * Hace falta porque anular NO borra el cobro: deja el VENTA original y le
+   * suma un EGRESO que lo compensa. El efectivo cuadraba, pero el turno
+   * reportaba la venta anulada como venta y su devolución como "gasto del
+   * negocio" — dos cifras infladas que además contradecían a Conciliación,
+   * que sí las filtra.
+   */
+  estadoOrden?: string | null;
 };
 
 export type ResumenCaja = {
@@ -40,8 +50,13 @@ export type ResumenCaja = {
   totalNequi: number;
   totalOtros: number;
   totalIngresos: number;
-  /** Solo gastos del negocio: los retiros de los socios se cuentan aparte. */
+  /** Solo gastos del negocio: los retiros y las devoluciones van aparte. */
   totalEgresos: number;
+  /**
+   * Plata devuelta al cliente por ventas anuladas. Sale del cajón, pero no es
+   * un gasto: es una venta que se deshizo.
+   */
+  totalAnulaciones: number;
   /**
    * Lo que los socios sacaron para ellos en el turno. Sale del cajón igual que
    * un egreso, pero no es un gasto: repartir la ganancia no es un costo de
@@ -67,22 +82,33 @@ export function calcularResumenCaja(
   let totalOtros = 0;
   let totalIngresos = 0;
   let totalEgresos = 0;
+  let totalAnulaciones = 0;
   let totalRetiros = 0;
   let efectivoNeto = 0; // solo movimientos en efectivo, con su signo
 
   const ordenesVendidas = new Set<string>();
 
   for (const m of movimientos) {
+    // Una venta anulada y su devolución siguen siendo movimientos reales del
+    // cajón —la plata entró y volvió a salir— pero ninguna de las dos es lo que
+    // dice su tipo: no se vendió nada y no se gastó nada. Se sacan de los
+    // totales que se leen, nunca del efectivo, que tiene que seguir cuadrando.
+    const anulada = m.estadoOrden === "CANCELADO";
+
     if (m.tipo === "VENTA") {
-      totalVentas += m.monto;
-      if (m.orderId) ordenesVendidas.add(m.orderId);
-      if (m.metodo === "EFECTIVO") totalEfectivo += m.monto;
-      else if (m.metodo === "NEQUI") totalNequi += m.monto;
-      else totalOtros += m.monto;
+      if (!anulada) {
+        totalVentas += m.monto;
+        if (m.orderId) ordenesVendidas.add(m.orderId);
+        if (m.metodo === "EFECTIVO") totalEfectivo += m.monto;
+        else if (m.metodo === "NEQUI") totalNequi += m.monto;
+        else totalOtros += m.monto;
+      }
     } else if (m.tipo === "INGRESO") {
       totalIngresos += m.monto;
     } else if (m.tipo === "RETIRO") {
       totalRetiros += m.monto;
+    } else if (anulada) {
+      totalAnulaciones += m.monto;
     } else {
       totalEgresos += m.monto;
     }
@@ -103,6 +129,7 @@ export function calcularResumenCaja(
     totalOtros,
     totalIngresos,
     totalEgresos,
+    totalAnulaciones,
     totalRetiros,
     esperadoEfectivo: montoInicial + efectivoNeto,
   };
@@ -118,13 +145,13 @@ export async function obtenerCajaAbierta() {
     where: { estado: "ABIERTA" },
     include: {
       abiertaPor: { select: { id: true, name: true, email: true } },
-      movimientos: { orderBy: { createdAt: "desc" } },
+      movimientos: { orderBy: { createdAt: "desc" }, include: { order: { select: { status: true } } } },
     },
   });
 
   if (!sesion) return null;
 
-  return { ...sesion, resumen: calcularResumenCaja(sesion.montoInicial, sesion.movimientos) };
+  return { ...sesion, resumen: calcularResumenCaja(sesion.montoInicial, sesion.movimientos.map(paraArqueo)) };
 }
 
 /** Detalle completo de un turno (abierto o cerrado) para la vista de arqueo. */
@@ -134,7 +161,7 @@ export async function obtenerSesionCaja(id: string) {
     include: {
       abiertaPor: { select: { name: true, email: true } },
       cerradaPor: { select: { name: true, email: true } },
-      movimientos: { orderBy: { createdAt: "asc" } },
+      movimientos: { orderBy: { createdAt: "asc" }, include: { order: { select: { status: true } } } },
       ordenes: {
         orderBy: { createdAt: "desc" },
         include: { items: { include: { product: { select: { name: true } } } } },
@@ -157,12 +184,31 @@ export async function obtenerSesionCaja(id: string) {
           totalOtros: sesion.totalOtros ?? 0,
           totalIngresos: sesion.totalIngresos ?? 0,
           totalEgresos: sesion.totalEgresos ?? 0,
+          // Los turnos cerrados ANTES de que existiera este renglón lo tienen
+          // en null. Se muestra 0: recalcularlo sería justo lo que un arqueo
+          // firmado no puede hacer.
+          totalAnulaciones: sesion.totalAnulaciones ?? 0,
           totalRetiros: sesion.totalRetiros ?? 0,
           esperadoEfectivo: sesion.esperadoEfectivo ?? 0,
         }
-      : calcularResumenCaja(sesion.montoInicial, sesion.movimientos);
+      : calcularResumenCaja(sesion.montoInicial, sesion.movimientos.map(paraArqueo));
 
   return { ...sesion, resumen };
+}
+
+/**
+ * Aplana un movimiento de Prisma a lo único que el arqueo necesita. Existe para
+ * que las dos lecturas (turno abierto y detalle de un turno) no puedan olvidar
+ * el estado del pedido y volver a contar las ventas anuladas.
+ */
+function paraArqueo(m: {
+  tipo: MovimientoCajaTipo;
+  metodo: MetodoPago;
+  monto: number;
+  orderId: string | null;
+  order?: { status: string } | null;
+}): MovimientoParaArqueo {
+  return { tipo: m.tipo, metodo: m.metodo, monto: m.monto, orderId: m.orderId, estadoOrden: m.order?.status ?? null };
 }
 
 /**

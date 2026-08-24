@@ -42,6 +42,9 @@ export function GastosManager({ gastos }: { gastos: Gasto[] }) {
     const result = await deleteGasto(gasto.id);
     if (!result.success) return toast.error(result.error);
     toast.success("Gasto eliminado");
+    // El aviso no es un error: la acción se hizo, pero hay algo que saber
+    // (típicamente, que el egreso de caja sigue en pie y por qué).
+    if (result.aviso) toast.warning(result.aviso, { duration: 8000 });
     router.refresh();
   };
 
@@ -160,6 +163,7 @@ function GastoForm({ gasto, onDone }: { gasto: Gasto | null; onDone: () => void 
     setLoading(false);
     if (!result.success) return toast.error(result.error);
     toast.success(gasto ? "Gasto actualizado" : "Gasto registrado");
+    if (result.aviso) toast.warning(result.aviso, { duration: 8000 });
     onDone();
   };
 

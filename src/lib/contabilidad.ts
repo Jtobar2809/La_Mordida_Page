@@ -1,7 +1,9 @@
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ESTADOS_VENTA_CONFIRMADA, obtenerPerdidas } from "@/lib/inventario";
-import { costoDeMovimientos } from "@/lib/costos";
+import { ESTADOS_VENTA_CONFIRMADA } from "@/lib/inventario";
+import { clasificarConsumo } from "@/lib/costos";
+import { vigentesEn, repartirFijos } from "@/lib/costos-fijos";
+import { SUMA_VENTA, desglosarVenta } from "@/lib/ventas";
 
 /**
  * Estado de resultados de un mes.
@@ -27,10 +29,22 @@ export type EstadoResultados = {
   mes: number;
   esMesEnCurso: boolean;
 
+  /** Comida vendida, neta de descuentos. NO incluye domicilio ni impuesto. */
   ventas: number;
   pedidos: number;
+  /** Cobrado por domicilios. Entra y vuelve a salir; no es venta del negocio. */
+  domicilios: number;
+  /** Impuesto recaudado. Es plata de la DIAN que uno solo está guardando. */
+  impuestos: number;
 
+  /** Insumos de receta que se fueron en las ventas del mes. */
   costoVenta: number;
+  /**
+   * Bolsas, papel y desechables: se descuentan a mano, sin pedido detrás, y
+   * hasta hace poco no aparecían en ningún renglón. Son costo variable de
+   * vender igual que la carne, así que van ARRIBA de la utilidad bruta.
+   */
+  consumoOperacion: number;
   utilidadBruta: number;
   margenBrutoPct: number;
 
@@ -66,8 +80,14 @@ export type EstadoResultados = {
    * quedó en inventario. Se muestra aparte justamente para poder explicarlo.
    */
   comprasDelMes: number;
-  /** Cuánto de lo comprado no se consumió (o al revés, si se comió despensa). */
+  /**
+   * Cuánto de lo comprado no se consumió (o al revés, si se comió despensa).
+   * Cuadra con el movimiento real del stock: compras menos TODO lo que salió
+   * —ventas, desechables y mermas— más lo que un conteo encontró de más.
+   */
   variacionInventario: number;
+  /** Ajustes de conteo hacia arriba. Se expone para poder explicar el cuadre. */
+  ajustesPositivos: number;
 };
 
 export async function obtenerEstadoResultados(anio: number, mes: number): Promise<EstadoResultados> {
@@ -78,52 +98,71 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
 
   const rango = { gte: desde, lt: hasta };
 
-  const [ventasAgg, movimientos, costosFijos, gastos, compras, perdidas, retiros] = await Promise.all([
+  const [ventasAgg, movimientos, costosFijos, gastos, compras, retiros] = await Promise.all([
     prisma.order.aggregate({
       where: { status: { in: estadosConfirmados }, createdAt: rango },
-      _sum: { total: true },
+      _sum: SUMA_VENTA,
       _count: { _all: true },
     }),
 
-    // SALIDA menos ENTRADA: cancelar un pedido crea una entrada que compensa su
-    // salida, y contar solo las salidas metía la comida de pedidos cancelados
-    // dentro del costo de venta.
+    // TODOS los movimientos del mes, no solo los que cuelgan de un pedido.
+    // `clasificarConsumo` los separa: lo que se fue en ventas, lo que se fue en
+    // desechables y lo que se perdió. Antes esta consulta filtraba
+    // `orderId: { not: null }` y las bolsas —que se descuentan a mano, sin
+    // pedido— desaparecían del estado de resultados: bajaban del stock, la
+    // plata ya estaba pagada, y la utilidad no se enteraba.
     prisma.movimientoInsumo.findMany({
-      where: { tipo: { in: ["SALIDA", "ENTRADA"] }, orderId: { not: null }, createdAt: rango },
-      include: { insumo: { select: { costoUnitario: true } } },
+      where: { createdAt: rango },
+      select: {
+        tipo: true,
+        cantidad: true,
+        costoUnitario: true,
+        orderId: true,
+        produccionId: true,
+        insumo: { select: { costoUnitario: true } },
+      },
     }),
 
-    prisma.costoFijo.findMany({ where: { activo: true }, select: { nombre: true, monto: true, esRetiro: true } }),
+    // Por vigencia, NO por `activo`. Un mes cerrado tiene que seguir mostrando
+    // el arriendo que se pagó ESE mes, aunque hoy sea otro o ya no exista.
+    prisma.costoFijo.findMany({
+      where: vigentesEn(desde, hasta),
+      select: { nombre: true, monto: true, esRetiro: true },
+    }),
 
     prisma.gasto.findMany({ where: { fecha: rango }, select: { categoria: true, monto: true } }),
 
     prisma.compra.aggregate({ where: { fecha: rango }, _sum: { total: true } }),
-
-    obtenerPerdidas(desde),
 
     // Los retiros salen de la caja, no de una tabla de gastos: son plata que
     // sale del cajón, y por eso viven como movimientos del turno.
     prisma.movimientoCaja.aggregate({ where: { tipo: "RETIRO", createdAt: rango }, _sum: { monto: true } }),
   ]);
 
-  const ventas = ventasAgg._sum?.total ?? 0;
+  // `total` incluye domicilio e impuesto; ninguno de los dos es venta del
+  // negocio. Ver lib/ventas.ts.
+  const { ventas, domicilios, impuestos } = desglosarVenta(ventasAgg);
   const pedidos = ventasAgg._count._all;
 
-  const costoVenta = costoDeMovimientos(movimientos);
+  const consumo = clasificarConsumo(movimientos);
+  const costoVenta = consumo.venta;
+  const consumoOperacion = consumo.operacion;
 
-  const utilidadBruta = ventas - costoVenta;
+  // Los desechables son costo de vender, igual que la carne: sin bolsa no sale
+  // el pedido. Por eso restan ANTES de la utilidad bruta y no como un gasto
+  // más abajo — si no, el margen de contribución sale inflado y con él el
+  // punto de equilibrio (ver operacion.ts).
+  const utilidadBruta = ventas - costoVenta - consumoOperacion;
 
-  const retiroPresupuestado = costosFijos.filter((c) => c.esRetiro).reduce((s, c) => s + c.monto, 0);
+  const { gastosFijos, retiroPresupuestado } = repartirFijos(costosFijos);
   const retiroReal = retiros._sum?.monto ?? 0;
-  const gastosFijos = costosFijos.filter((c) => !c.esRetiro).reduce((s, c) => s + c.monto, 0);
 
   const gastosDelMes = gastos.reduce((s, g) => s + g.monto, 0);
 
-  // obtenerPerdidas filtra desde una fecha pero no hasta; el mes en curso no
-  // necesita el recorte, un mes pasado sí.
-  const mermas = perdidas.movimientos
-    .filter((m) => m.createdAt >= desde && m.createdAt < hasta)
-    .reduce((s, m) => s + perdidas.costoDe(m), 0);
+  // Salen de la misma clasificación que el costo de venta, así que el mes que
+  // se está mirando es exactamente el mismo para los dos y no hay forma de que
+  // una merma se cuente en el mes equivocado.
+  const mermas = consumo.perdidas;
 
   const totalGastos = gastosFijos + gastosDelMes + mermas;
   const utilidadNeta = utilidadBruta - totalGastos;
@@ -149,7 +188,10 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
     esMesEnCurso,
     ventas,
     pedidos,
+    domicilios,
+    impuestos,
     costoVenta,
+    consumoOperacion,
     utilidadBruta,
     margenBrutoPct: ventas > 0 ? (utilidadBruta / ventas) * 100 : 0,
     gastosFijos,
@@ -166,7 +208,11 @@ export async function obtenerEstadoResultados(anio: number, mes: number): Promis
     quedaEnNegocio: utilidadNeta - retiroReal,
     detalleGastos,
     comprasDelMes,
-    variacionInventario: comprasDelMes - costoVenta,
+    // La identidad del inventario: lo que entró menos todo lo que salió. Antes
+    // era `compras − costoVenta` a secas, así que los desechables gastados y
+    // las mermas se contaban como si siguieran en la despensa.
+    variacionInventario: comprasDelMes - consumo.salidaNeta,
+    ajustesPositivos: consumo.ajustesPositivos,
   };
 }
 
@@ -190,6 +236,7 @@ export type TramoCascada = {
 export function construirCascada(d: {
   ventas: number;
   costoVenta: number;
+  consumoOperacion: number;
   utilidadBruta: number;
   gastosFijos: number;
   gastosDelMes: number;
@@ -198,9 +245,23 @@ export function construirCascada(d: {
 }): TramoCascada[] {
   const pasos: TramoCascada[] = [
     { nombre: "Ventas", monto: d.ventas, rol: "entra", rango: [0, d.ventas] },
-    { nombre: "Insumos", monto: -d.costoVenta, rol: "sale", rango: [d.ventas - d.costoVenta, d.ventas] },
-    { nombre: "Utilidad bruta", monto: d.utilidadBruta, rol: "resultado", rango: [0, d.utilidadBruta] },
   ];
+
+  // Los dos costos variables bajan desde las ventas hasta la utilidad bruta,
+  // uno detrás del otro. Se recorre en vez de escribirse a mano para que el
+  // tramo de desechables no exista cuando vale cero.
+  let sobreLaVenta = d.ventas;
+  for (const [nombre, monto] of [
+    ["Insumos", d.costoVenta],
+    ["Desechables", d.consumoOperacion],
+  ] as const) {
+    if (monto <= 0) continue;
+    const siguiente = sobreLaVenta - monto;
+    pasos.push({ nombre, monto: -monto, rol: "sale", rango: [siguiente, sobreLaVenta] });
+    sobreLaVenta = siguiente;
+  }
+
+  pasos.push({ nombre: "Utilidad bruta", monto: d.utilidadBruta, rol: "resultado", rango: [0, d.utilidadBruta] });
 
   let corriendo = d.utilidadBruta;
   for (const [nombre, monto] of [

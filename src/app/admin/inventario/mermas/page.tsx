@@ -17,7 +17,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
   const dias = Number(diasParam ?? 30);
   const desde = dias > 0 ? new Date(Date.now() - dias * 24 * 60 * 60 * 1000) : undefined;
 
-  const { movimientos, total: totalPerdida, topInsumos, costoDe } = await obtenerPerdidas(desde);
+  const { movimientos, recientes, total: totalPerdida, topInsumos, costoDe } = await obtenerPerdidas(desde);
 
   return (
     <div>
@@ -84,7 +84,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
             </tr>
           </thead>
           <tbody className="divide-y divide-charcoal-100 dark:divide-charcoal-700">
-            {movimientos.map((m) => (
+            {recientes.map((m) => (
               <tr key={m.id} className="bg-white dark:bg-charcoal-800">
                 <td className="px-4 py-3 text-charcoal-500 dark:text-charcoal-300">{new Date(m.createdAt).toLocaleDateString("es-CO")}</td>
                 <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">{m.insumo.nombre}</td>
@@ -96,7 +96,7 @@ export default async function AdminMermasPage({ searchParams }: { searchParams: 
                 <td className="px-4 py-3 text-charcoal-400">{m.motivo || "—"}</td>
               </tr>
             ))}
-            {movimientos.length === 0 && (
+            {recientes.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-charcoal-400">
                   Sin mermas ni ajustes negativos en este período.
