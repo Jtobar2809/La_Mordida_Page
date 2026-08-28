@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ConciliacionView } from "@/components/admin/conciliacion-view";
 import { ContabilidadTabs } from "@/components/admin/contabilidad-tabs";
+import { SaldosPanel } from "@/components/admin/saldos-panel";
 import { obtenerConciliacion } from "@/lib/conciliacion";
+import { obtenerSaldos } from "@/lib/saldos";
 import { MESES } from "@/lib/contabilidad";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +28,10 @@ export default async function AdminConciliacionPage({
   const mesNum = Number(mesParam);
   const mes = mesNum >= 1 && mesNum <= 12 ? mesNum : hoy.getMonth() + 1;
 
-  const datos = await obtenerConciliacion(anio, mes);
+  // Los saldos no llevan mes: son de hoy. Van arriba de la conciliación porque
+  // responden la pregunta que uno trae al entrar —cuánta plata debería haber—
+  // y el resto de la pantalla explica por qué podría no estar.
+  const [datos, saldos] = await Promise.all([obtenerConciliacion(anio, mes), obtenerSaldos()]);
 
   return (
     <div className="space-y-6">
@@ -58,6 +63,8 @@ export default async function AdminConciliacionPage({
           );
         })}
       </nav>
+
+      <SaldosPanel saldos={saldos} />
 
       <ConciliacionView datos={datos} />
     </div>

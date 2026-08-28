@@ -1082,3 +1082,33 @@ enum OrderCanal {
   WEB
   CAJA
 }
+
+/// Un conteo del saldo real de Nequi, contra lo que el sistema esperaba.
+///
+/// El efectivo se cuenta al cerrar cada turno y ahí se acaba la pregunta: el
+/// cajón vuelve a empezar de una base. Nequi no funciona así — el saldo del
+/// celular es acumulado, no se reinicia con el turno y nadie lo vacía. Por eso
+/// el arqueo es un evento con su propia fecha y no una columna de CajaSesion.
+///
+/// Lo importante: cada arqueo REANCLA el saldo esperado. A partir de aquí el
+/// sistema cuenta desde `saldoReal`, no desde el histórico. Es lo mismo que
+/// hace el cajón al abrir el turno con una base contada, y es lo que evita que
+/// un descuadre viejo —una transferencia que nadie anotó en 2026— se quede
+/// restando para siempre en un saldo que ya se verificó a mano.
+model ArqueoNequi {
+  id String @id @default(cuid())
+
+  fecha DateTime @default(now())
+  /// Lo que el sistema calculó que debía haber en el momento del conteo.
+  saldoEsperado Int
+  /// Lo que de verdad mostraba la app.
+  saldoReal     Int
+  /// saldoReal − saldoEsperado. Negativo = falta plata.
+  diferencia    Int
+
+  notas       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([fecha])
+}

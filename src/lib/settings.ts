@@ -18,6 +18,11 @@ export const DEFAULT_SETTINGS = {
   ventasEstimadasMes: "0",
   ticketPromedioEstimado: "0",
   diasOperacionMes: "30",
+  // Cuánto había en Nequi el día que se empezó a llevar el saldo. Es el ancla
+  // desde la cual se suman ventas y se restan pagos; sin ella el saldo
+  // arrancaría en cero y estaría corrido en exactamente lo que ya había en el
+  // celular. En cuanto se hace el primer arqueo manda el arqueo, no esto.
+  nequiSaldoInicial: "0",
 };
 
 export type SettingsKey = keyof typeof DEFAULT_SETTINGS;
