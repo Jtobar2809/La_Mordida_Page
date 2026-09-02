@@ -2,12 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { obtenerCajaAbierta } from "@/lib/caja";
 import { obtenerCupoDelMesActual } from "@/lib/retiros";
 import { CajaWorkspace } from "@/components/admin/caja/caja-workspace";
+import { EMAIL_CLIENTE_MOSTRADOR } from "@/lib/caja";
 import type { CategoriaPOS } from "@/types/caja";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminCajaPage() {
-  const [sesion, cupo, categorias] = await Promise.all([
+  const [sesion, cupo, categorias, clientes] = await Promise.all([
     obtenerCajaAbierta(),
     // El cupo de retiros es del MES, no del turno: por eso se consulta aquí y
     // no sale del arqueo, que solo sabe de las últimas horas.
@@ -35,6 +36,15 @@ export default async function AdminCajaPage() {
         },
       },
     }),
+
+    // Los clientes registrados, para poder ponerle nombre a una venta de
+    // mostrador. Se excluye el cliente genérico: elegirlo a mano no significa
+    // nada, es exactamente lo que pasa cuando no se elige a nadie.
+    prisma.user.findMany({
+      where: { role: "CLIENTE", email: { not: EMAIL_CLIENTE_MOSTRADOR } },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, phone: true },
+    }),
   ]);
 
   const catalogo: CategoriaPOS[] = categorias
@@ -58,5 +68,5 @@ export default async function AdminCajaPage() {
       })
     : [];
 
-  return <CajaWorkspace sesion={sesion} catalogo={catalogo} ventas={ventas} cupo={cupo} />;
+  return <CajaWorkspace sesion={sesion} catalogo={catalogo} ventas={ventas} cupo={cupo} clientes={clientes} />;
 }

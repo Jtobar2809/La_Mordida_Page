@@ -12,6 +12,9 @@ export default async function AdminOrdersPage() {
       include: {
         user: { select: { name: true, phone: true } },
         items: { include: { product: { select: { name: true } } } },
+        // Solo para saber si su plata ya entró a un turno. Un pedido web sin
+        // esto es una venta que ningún saldo vio.
+        movimientosCaja: { where: { tipo: "VENTA" }, select: { id: true } },
       },
     }),
     prisma.product.findMany({
@@ -27,7 +30,7 @@ export default async function AdminOrdersPage() {
         <h1 className="font-display text-3xl tracking-wide text-charcoal-900 dark:text-cream">PEDIDOS</h1>
         <ManualOrderButton products={products} />
       </div>
-      <OrdersTable orders={orders} />
+      <OrdersTable orders={orders.map((o) => ({ ...o, pagado: o.movimientosCaja.length > 0 }))} />
     </div>
   );
 }

@@ -26,6 +26,20 @@ export type CategoriaPOS = {
   productos: ProductoPOS[];
 };
 
+/**
+ * Un cliente registrado, para poder ponerle nombre a una venta de mostrador.
+ *
+ * Es opcional a propósito: la mayoría de las ventas del mostrador son de gente
+ * que no está registrada y no tiene por qué estarlo. Cuando no se elige a
+ * nadie, la venta queda a nombre del cliente genérico de mostrador, igual que
+ * antes.
+ */
+export type ClientePOS = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+};
+
 export type SesionCajaActiva = CajaSesion & {
   abiertaPor: { id: string; name: string | null; email: string | null };
   movimientos: MovimientoCaja[];

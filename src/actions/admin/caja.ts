@@ -334,7 +334,15 @@ const ventaSchema = z.object({
   descuento: z.coerce.number().int().min(0).default(0),
   /** Billete con el que pagó el cliente, para calcular el cambio del ticket. */
   efectivoRecibido: z.coerce.number().int().min(0).optional(),
-  clienteNombre: z.string().max(80).optional(),
+  /**
+   * A quién se le vendió, si es alguien registrado. Vacío = mostrador.
+   *
+   * Antes acá iba un nombre escrito a mano que terminaba en las notas del
+   * pedido. Servía para el ticket y para nada más: en la lista de Pedidos toda
+   * venta de caja aparecía como "Cliente de mostrador", así que un cliente
+   * frecuente no tenía historial por más que la cajera escribiera su nombre.
+   */
+  clienteId: z.string().optional(),
   notas: z.string().max(300).optional(),
 });
 
@@ -365,7 +373,7 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
   const parsed = ventaSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
-  const { items, pagos, descuento, efectivoRecibido, clienteNombre, notas } = parsed.data;
+  const { items, pagos, descuento, efectivoRecibido, clienteId, notas } = parsed.data;
 
   const sesion = await prisma.cajaSesion.findFirst({ where: { estado: "ABIERTA" } });
   if (!sesion) return { success: false, error: "Abre la caja antes de cobrar." };
@@ -413,10 +421,16 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
   // pedidos sin un join; el desglose real de un pago mixto vive en MovimientoCaja.
   const metodoPrincipal = pagos.reduce((mayor, p) => (p.monto > mayor.monto ? p : mayor)).metodo;
 
-  const cliente = await obtenerClienteMostrador();
-  const notasVenta = [clienteNombre?.trim() ? `Cliente: ${clienteNombre.trim()}` : null, notas?.trim() || null]
-    .filter(Boolean)
-    .join(" · ");
+  // El cliente elegido, si eligieron alguno. Se verifica que exista en vez de
+  // confiar en el id que llegó: el select se llenó cuando se cargó la pantalla,
+  // y entre eso y el cobro alguien pudo borrar ese usuario. Si ya no está, la
+  // venta se cobra igual a nombre del mostrador — perder la atribución es mucho
+  // mejor que perder la venta.
+  const clienteElegido = clienteId
+    ? await prisma.user.findUnique({ where: { id: clienteId }, select: { id: true } })
+    : null;
+  const cliente = clienteElegido ?? (await obtenerClienteMostrador());
+  const notasVenta = notas?.trim() || "";
 
   try {
     const orderId = await prisma.$transaction(
@@ -563,4 +577,95 @@ export async function anularVenta(input: unknown): Promise<ActionResult> {
 
   revalidarCaja();
   return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cobro de un pedido de la web
+// ─────────────────────────────────────────────────────────────────────────────
+
+const pagoWebSchema = z.object({
+  orderId: z.string().min(1),
+  metodo: z.nativeEnum(MetodoPago),
+});
+
+/**
+ * Registra que un pedido de la web ya se pagó, metiendo esa plata al turno.
+ *
+ * El hueco que cierra: un pedido web NUNCA creaba movimiento de caja. El
+ * cliente pagaba el domicilio por Nequi, la plata entraba de verdad al celular,
+ * y el cuadro de saldos no se enteraba nunca — el Nequi quedaba corto por
+ * exactamente ese valor y no había renglón que lo explicara. La venta solo
+ * aparecía, aparte, en Conciliación.
+ *
+ * Va separado del estado del pedido a propósito. "En camino" y "pagado" son dos
+ * hechos distintos: el domiciliario sale con la comida y vuelve con la plata, a
+ * veces horas después. Amarrar el cobro al estado obligaría a mentir en uno de
+ * los dos.
+ */
+export async function registrarPagoPedidoWeb(input: unknown): Promise<ActionResult> {
+  let userId: string;
+  try {
+    userId = await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = pagoWebSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: "Datos inválidos" };
+  const { orderId, metodo } = parsed.data;
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      total: true,
+      status: true,
+      canal: true,
+      movimientosCaja: { select: { id: true } },
+    },
+  });
+
+  if (!order) return { success: false, error: "Ese pedido ya no existe." };
+  if (order.canal === "CAJA") {
+    return { success: false, error: "Las ventas de mostrador ya entran al turno cuando se cobran." };
+  }
+  if (order.status === "CANCELADO") {
+    return { success: false, error: "Ese pedido está cancelado. No se le puede registrar un pago." };
+  }
+  // La barrera contra cobrar dos veces el mismo pedido. Sin ella, dos clics
+  // seguidos meterían la plata dos veces al turno y el arqueo cerraría con un
+  // sobrante que nadie sabría de dónde salió.
+  if (order.movimientosCaja.length > 0) {
+    return { success: false, error: "Este pedido ya tiene el pago registrado." };
+  }
+
+  const sesion = await prisma.cajaSesion.findFirst({ where: { estado: "ABIERTA" }, select: { id: true, codigo: true } });
+  if (!sesion) {
+    return { success: false, error: "Abre la caja antes de registrar el pago: si no, esa plata no entra a ningún turno." };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.movimientoCaja.create({
+      data: {
+        sesionId: sesion.id,
+        tipo: "VENTA",
+        metodo,
+        monto: order.total,
+        concepto: `Pedido web ${order.id.slice(-6).toUpperCase()}`,
+        orderId: order.id,
+        createdById: userId,
+      },
+    });
+
+    // El pedido queda amarrado al turno para que la anulación sepa a cuál
+    // sesión devolverle la plata, y `metodoPago` para poder filtrar en la lista
+    // sin un join.
+    await tx.order.update({
+      where: { id: order.id },
+      data: { cajaSesionId: sesion.id, metodoPago: metodo },
+    });
+  });
+
+  revalidarCaja();
+  return { success: true, aviso: `Entró al turno ${sesion.codigo} como venta por ${metodo === "NEQUI" ? "Nequi" : metodo.toLowerCase()}.` };
 }

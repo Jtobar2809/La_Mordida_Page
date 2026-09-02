@@ -4,7 +4,7 @@ import { AperturaCaja } from "./apertura-caja";
 import { PosTerminal } from "./pos-terminal";
 import type { VentaResumida } from "./ventas-del-turno";
 import type { CupoRetiros } from "@/lib/retiros";
-import type { CategoriaPOS, SesionCajaActiva } from "@/types/caja";
+import type { CategoriaPOS, ClientePOS, SesionCajaActiva } from "@/types/caja";
 
 /**
  * La caja solo tiene dos estados posibles, y son excluyentes: o hay un turno
@@ -18,13 +18,15 @@ export function CajaWorkspace({
   catalogo,
   ventas,
   cupo,
+  clientes,
 }: {
   sesion: SesionCajaActiva | null;
   catalogo: CategoriaPOS[];
   ventas: VentaResumida[];
   cupo: CupoRetiros;
+  clientes: ClientePOS[];
 }) {
   if (!sesion) return <AperturaCaja />;
 
-  return <PosTerminal sesion={sesion} catalogo={catalogo} ventas={ventas} cupo={cupo} />;
+  return <PosTerminal sesion={sesion} catalogo={catalogo} ventas={ventas} cupo={cupo} clientes={clientes} />;
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -289,7 +290,14 @@ export async function updateOrderStatus(orderId: string, status: string): Promis
   // Cancelarla desde aquí devolvería los insumos al inventario pero dejaría la
   // plata registrada en el turno, y la caja cerraría con un sobrante fantasma.
   // Anularla desde /admin/caja hace las dos cosas a la vez.
-  const orden = await prisma.order.findUnique({ where: { id: orderId }, select: { canal: true } });
+  const orden = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      canal: true,
+      cajaSesionId: true,
+      movimientosCaja: { where: { tipo: "VENTA" }, select: { metodo: true, monto: true, sesionId: true } },
+    },
+  });
   if (!orden) return { success: false, error: "Ese pedido ya no existe." };
   if (orden.canal === "CAJA") {
     return { success: false, error: "Es una venta de caja. Anúlala desde /admin/caja para que también se devuelva el dinero del turno." };
@@ -299,6 +307,46 @@ export async function updateOrderStatus(orderId: string, status: string): Promis
     where: { id: orderId },
     data: { status: parsed.data },
   });
+
+  // Si el pedido web ya tenía el pago registrado, cancelarlo tiene que devolver
+  // esa plata. Sin esto el cobro se quedaba adentro y el arqueo cerraba con un
+  // sobrante fantasma: el cajón decía tener una plata que se le devolvió al
+  // cliente. Es el mismo mecanismo que `anularVenta` para el mostrador — EGRESO
+  // y no "venta negativa", porque devolverle al cliente es plata que sale.
+  //
+  // La devolución va al turno ABIERTO, no al turno donde entró el cobro. Si el
+  // pedido se pagó anoche y se cancela hoy, la plata sale del cajón de hoy;
+  // escribirla en el turno de anoche movería un arqueo que alguien ya contó y
+  // firmó. Es la misma regla que `anularVenta` aplica al negarse a anular
+  // ventas de turnos cerrados.
+  if (parsed.data === "CANCELADO" && orden.movimientosCaja.length > 0) {
+    const sesionAbierta = await prisma.cajaSesion.findFirst({
+      where: { estado: "ABIERTA" },
+      select: { id: true, codigo: true },
+    });
+
+    if (!sesionAbierta) {
+      return {
+        success: true,
+        aviso:
+          "El pedido quedó cancelado, pero no hay caja abierta para registrar la devolución. Cuando abras el turno, anota el egreso a mano o el saldo va a quedar alto por ese valor.",
+      };
+    }
+
+    await prisma.movimientoCaja.createMany({
+      data: orden.movimientosCaja.map((m) => ({
+        sesionId: sesionAbierta.id,
+        tipo: "EGRESO" as const,
+        metodo: m.metodo,
+        monto: m.monto,
+        concepto: `Devolución pedido web ${orderId.slice(-6).toUpperCase()}`,
+        orderId,
+      })),
+    });
+    revalidatePath("/admin/caja");
+    revalidatePath("/admin/contabilidad");
+    return { success: true, aviso: `Se devolvió el pago como egreso del turno ${sesionAbierta.codigo}.` };
+  }
 
   // Un pedido confirmado (o más adelante en el flujo) consume insumos según receta.
   // Si se cancela un pedido que ya había descontado stock, se asume que los

@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { formatCOP, cn } from "@/lib/utils";
 import { totalLinea } from "@/types/caja";
 import type { CupoRetiros } from "@/lib/retiros";
-import type { CategoriaPOS, LineaCarrito, ProductoPOS, SesionCajaActiva } from "@/types/caja";
+import type { CategoriaPOS, ClientePOS, LineaCarrito, ProductoPOS, SesionCajaActiva } from "@/types/caja";
 import { CobroModal } from "./cobro-modal";
 import { CierreCajaModal } from "./cierre-caja-modal";
 import { MovimientoCajaModal } from "./movimiento-caja-modal";
@@ -36,11 +36,13 @@ export function PosTerminal({
   catalogo,
   ventas,
   cupo,
+  clientes,
 }: {
   sesion: SesionCajaActiva;
   catalogo: CategoriaPOS[];
   ventas: VentaResumida[];
   cupo: CupoRetiros;
+  clientes: ClientePOS[];
 }) {
   const router = useRouter();
 
@@ -349,6 +351,7 @@ export function PosTerminal({
           subtotal={subtotal}
           descuento={descuentoNumero}
           total={total}
+          clientes={clientes}
           onClose={() => setCobrando(false)}
           onCobrado={alCobrar}
         />

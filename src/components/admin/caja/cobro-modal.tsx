@@ -6,11 +6,12 @@ import { Banknote, Smartphone, Split } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cobrarVenta } from "@/actions/admin/caja";
 import { formatCOP, cn } from "@/lib/utils";
 import { totalLinea } from "@/types/caja";
-import type { LineaCarrito } from "@/types/caja";
+import type { ClientePOS, LineaCarrito } from "@/types/caja";
 import type { DatosTicket } from "./ticket-venta";
 
 type Modo = "EFECTIVO" | "NEQUI" | "MIXTO";
@@ -23,6 +24,7 @@ export function CobroModal({
   subtotal,
   descuento,
   total,
+  clientes,
   onClose,
   onCobrado,
 }: {
@@ -30,14 +32,19 @@ export function CobroModal({
   subtotal: number;
   descuento: number;
   total: number;
+  clientes: ClientePOS[];
   onClose: () => void;
   onCobrado: (datos: DatosTicket) => void;
 }) {
   const [modo, setModo] = React.useState<Modo>("EFECTIVO");
   const [recibido, setRecibido] = React.useState("");
   const [efectivoMixto, setEfectivoMixto] = React.useState("");
-  const [clienteNombre, setClienteNombre] = React.useState("");
+  // Vacío = venta de mostrador, que es el caso normal. Solo cuando se elige a
+  // alguien la venta queda a su nombre y aparece en su historial de Pedidos.
+  const [clienteId, setClienteId] = React.useState("");
   const [cargando, setCargando] = React.useState(false);
+
+  const clienteElegido = clientes.find((c) => c.id === clienteId) ?? null;
 
   // Cuánto de la venta se paga en efectivo según el modo elegido.
   const parteEfectivo =
@@ -69,7 +76,7 @@ export function CobroModal({
         pagos,
         descuento,
         efectivoRecibido: parteEfectivo > 0 ? Math.max(recibidoNumero, parteEfectivo) : undefined,
-        clienteNombre: clienteNombre.trim() || undefined,
+        clienteId: clienteId || undefined,
       });
 
       if (!resultado.success) return toast.error(resultado.error);
@@ -79,7 +86,7 @@ export function CobroModal({
       onCobrado({
         orderId: resultado.data.orderId,
         fecha: new Date(),
-        clienteNombre: clienteNombre.trim() || undefined,
+        clienteNombre: clienteElegido?.name ?? undefined,
         // Se congela una copia del carrito para el ticket: el estado del POS se
         // vacía inmediatamente después de cobrar y el recibo debe seguir
         // mostrando lo que se acaba de vender.
@@ -196,13 +203,21 @@ export function CobroModal({
         )}
 
         <div>
-          <Label htmlFor="clienteNombre">Nombre del cliente (opcional)</Label>
-          <Input
-            id="clienteNombre"
-            value={clienteNombre}
-            onChange={(e) => setClienteNombre(e.target.value)}
-            placeholder="Para llamarlo cuando esté listo"
-          />
+          <Label htmlFor="clienteId">Cliente (opcional)</Label>
+          <Select id="clienteId" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+            <option value="">Mostrador — sin cliente</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name ?? "Sin nombre"}
+                {c.phone ? ` · ${c.phone}` : ""}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1 text-xs text-charcoal-400">
+            {clienteElegido
+              ? `La venta queda a nombre de ${clienteElegido.name ?? "ese cliente"} y aparece en su historial.`
+              : "Sin elegir a nadie, la venta queda como mostrador. No suma puntos en ninguno de los dos casos."}
+          </p>
         </div>
 
         <div className="flex gap-3 border-t border-charcoal-100 pt-4 dark:border-charcoal-700">
