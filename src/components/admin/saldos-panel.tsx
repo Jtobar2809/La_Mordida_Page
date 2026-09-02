@@ -68,9 +68,20 @@ export function SaldosPanel({ saldos }: { saldos: Saldos }) {
               // la cifra es lo que alguien contó al cerrar, y contar le gana a
               // calcular. Poner la base de un turno viejo aquí sugeriría que el
               // cajón sigue moviéndose, y no se está moviendo.
-              ancla={efectivo.hayTurnoAbierto ? efectivo.ancla : null}
+              //
+              // La excepción son las salidas que no pasaron por la caja: si se
+              // compró la carne con el turno cerrado, el saldo baja y la fila
+              // tiene que decir por qué. Sin esa columna el dueño ve una cifra
+              // menor a la que contó anoche y ningún renglón que lo explique.
+              ancla={efectivo.hayTurnoAbierto ? efectivo.ancla : efectivo.salidasFueraDeCaja > 0 ? efectivo.contado : null}
               entradas={efectivo.hayTurnoAbierto ? efectivo.entradas : null}
-              salidas={efectivo.hayTurnoAbierto ? efectivo.salidas : null}
+              salidas={
+                efectivo.hayTurnoAbierto
+                  ? efectivo.salidas + efectivo.salidasFueraDeCaja
+                  : efectivo.salidasFueraDeCaja > 0
+                    ? efectivo.salidasFueraDeCaja
+                    : null
+              }
               saldo={efectivo.saldo}
             />
 

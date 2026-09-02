@@ -96,14 +96,23 @@ export function calcularSaldo(opciones: {
   };
 }
 
-export type CompraParaSaldo = {
-  total: number;
+/**
+ * Plata que salió sin pasar por la caja, ya sea una compra al proveedor o un
+ * gasto anotado en contabilidad.
+ *
+ * Los dos se normalizan a esta misma forma a propósito. Vivían con reglas
+ * distintas —la compra descontaba, el gasto solo avisaba— y esa asimetría era
+ * exactamente lo que descuadraba el cuadro: dos salidas idénticas de la misma
+ * plata, tratadas distinto según en cuál pantalla se hubieran anotado.
+ */
+export type SalidaSinCaja = {
+  monto: number;
   metodoPago: MetodoPago;
   fecha: Date;
 };
 
 /**
- * De un montón de compras que no pasaron por la caja, cuáles descuentan de este
+ * De un montón de salidas que no pasaron por la caja, cuáles descuentan de este
  * medio de pago.
  *
  * `desde` es el ancla del medio —el último arqueo de Nequi, el último cierre
@@ -113,16 +122,16 @@ export type CompraParaSaldo = {
  * un turno) cuentan todas, que es lo correcto: no hay conteo previo que las
  * haya absorbido.
  *
- * Las compras pagadas con OTRO nunca entran acá a propósito: no son cajón ni
- * son Nequi, así que ningún saldo las puede seguir. Salen como alerta.
+ * Lo pagado con OTRO nunca entra acá a propósito: no es cajón ni es Nequi, así
+ * que ningún saldo lo puede seguir. Sale como alerta.
  */
-export function comprasQueDescuentan(
-  compras: CompraParaSaldo[],
+export function salidasQueDescuentan<T extends SalidaSinCaja>(
+  salidas: T[],
   opciones: { metodo: MetodoPago; desde: Date | null }
-): CompraParaSaldo[] {
+): T[] {
   const { metodo, desde } = opciones;
   if (metodo === "OTRO") return [];
-  return compras.filter((c) => c.metodoPago === metodo && (!desde || c.fecha > desde));
+  return salidas.filter((s) => s.metodoPago === metodo && (!desde || s.fecha > desde));
 }
 
 export type EfectivoGuardado = {
@@ -245,10 +254,10 @@ export async function obtenerSaldos(): Promise<Saldos> {
   const desdeArqueo = ultimoArqueo?.fecha ?? null;
   const desdeCierre = ultimaCerrada?.cerradaAt ?? null;
 
-  // Las compras se piden una sola vez, acotadas por la más vieja de las dos
-  // anclas; después cada medio se queda con las suyas. Si alguna de las dos no
-  // existe todavía (nunca se ha arqueado, nunca se ha cerrado un turno) hay que
-  // traerlas todas: no hay fecha desde la cual recortar.
+  // Compras y gastos se piden una sola vez, acotados por la más vieja de las
+  // dos anclas; después cada medio se queda con lo suyo. Si alguna de las dos
+  // no existe todavía (nunca se ha arqueado, nunca se ha cerrado un turno) hay
+  // que traerlos todos: no hay fecha desde la cual recortar.
   const anclaMasVieja =
     desdeArqueo && desdeCierre ? new Date(Math.min(desdeArqueo.getTime(), desdeCierre.getTime())) : null;
 
@@ -263,8 +272,8 @@ export async function obtenerSaldos(): Promise<Saldos> {
     // `createdAt` porque lo que importa es cuándo salió la plata, no cuándo se
     // anotó: un gasto del lunes registrado el miércoles salió el lunes.
     prisma.gasto.findMany({
-      where: { movimientoCaja: null, ...(desdeArqueo ? { fecha: { gt: desdeArqueo } } : {}) },
-      select: { monto: true, metodoPago: true },
+      where: { movimientoCaja: null, ...(anclaMasVieja ? { fecha: { gt: anclaMasVieja } } : {}) },
+      select: { monto: true, metodoPago: true, fecha: true },
     }),
 
     // Las compras que NO salieron por la caja. Las que sí tienen su egreso ya
@@ -276,20 +285,26 @@ export async function obtenerSaldos(): Promise<Saldos> {
     }),
   ]);
 
-  const sueltosNequi = gastosSueltos.filter((g) => g.metodoPago === "NEQUI");
-  const sueltosEfectivo = gastosSueltos.filter((g) => g.metodoPago === "EFECTIVO");
+  // Compras y gastos son la misma cosa para el saldo: plata que salió por una
+  // puerta distinta a la caja. `total` y `monto` son el mismo número con dos
+  // nombres, herencia de que cada libro se escribió por su lado.
+  const salidasSinCaja = [
+    ...comprasSueltas.map((c) => ({ monto: c.total, metodoPago: c.metodoPago, fecha: c.fecha, origen: "compra" as const })),
+    ...gastosSueltos.map((g) => ({ monto: g.monto, metodoPago: g.metodoPago, fecha: g.fecha, origen: "gasto" as const })),
+  ];
 
-  const comprasEfectivo = comprasQueDescuentan(comprasSueltas, { metodo: "EFECTIVO", desde: desdeCierre });
-  const comprasNequi = comprasQueDescuentan(comprasSueltas, { metodo: "NEQUI", desde: desdeArqueo });
-  const comprasOtro = comprasSueltas.filter((c) => c.metodoPago === "OTRO");
-  const sumar = (filas: { total: number }[]) => filas.reduce((s, c) => s + c.total, 0);
+  const fueraDeCajaEfectivo = salidasQueDescuentan(salidasSinCaja, { metodo: "EFECTIVO", desde: desdeCierre });
+  const fueraDeCajaNequi = salidasQueDescuentan(salidasSinCaja, { metodo: "NEQUI", desde: desdeArqueo });
+  const conOtroMedio = salidasSinCaja.filter((s) => s.metodoPago === "OTRO");
+  const sumar = (filas: { monto: number }[]) => filas.reduce((s, f) => s + f.monto, 0);
 
   // ── Efectivo en el cajón ────────────────────────────────────────────────
-  // Las compras en efectivo que no pasaron por la caja se restan del cajón
-  // aunque el turno esté cerrado y contado. Es la única excepción a "lo
-  // contado manda", y la razón es que esa plata salió DESPUÉS del conteo: el
-  // conteo describía el cajón de anoche, no el de ahora.
-  const efectivoFueraDeCaja = sumar(comprasEfectivo);
+  // Lo que salió en efectivo sin pasar por la caja se resta del cajón aunque el
+  // turno esté cerrado y contado. Es la única excepción a "lo contado manda", y
+  // la razón es la fecha: solo cuenta lo posterior al cierre, o sea plata que
+  // salió DESPUÉS del conteo. El conteo describía el cajón de anoche, no el de
+  // ahora.
+  const efectivoFueraDeCaja = sumar(fueraDeCajaEfectivo);
 
   const efectivoBase = calcularSaldo({
     metodo: "EFECTIVO",
@@ -322,13 +337,10 @@ export async function obtenerSaldos(): Promise<Saldos> {
       monto: m.monto,
       estadoOrden: m.order?.status ?? null,
     })),
-    // En Nequi los gastos sueltos SÍ se restan del saldo, y en efectivo no: el
-    // cajón tiene un arqueo firmado que manda sobre cualquier cálculo, y meterle
-    // una resta por fuera lo haría mentir sobre lo que se contó. Nequi no tiene
-    // nada más, así que este gasto es el único rastro de esa plata. Las compras
-    // son el caso aparte —van en los dos— porque siempre ocurren después del
-    // conteo, no antes.
-    salidasFueraDeCaja: sueltosNequi.reduce((s, g) => s + g.monto, 0) + sumar(comprasNequi),
+    // Compras y gastos por Nequi que nunca pasaron por la caja. La regla es la
+    // misma que en el cajón —solo lo posterior al ancla— y lo único que cambia
+    // es cuál es el ancla: acá el último arqueo, allá el último cierre.
+    salidasFueraDeCaja: sumar(fueraDeCajaNequi),
   });
 
   const nequi = {
@@ -340,46 +352,37 @@ export async function obtenerSaldos(): Promise<Saldos> {
   // ── Lo que puede estar descuadrando el cuadro ───────────────────────────
   const alertas: AlertaSaldo[] = [];
 
-  const totalSueltosEfectivo = sueltosEfectivo.reduce((s, g) => s + g.monto, 0);
-  if (totalSueltosEfectivo > 0) {
+  // Cómo se lee cada alerta: la primera dice "la plata ya cuadra, lo que falta
+  // es el rastro"; la segunda dice "la plata NO cuadra". Son problemas
+  // distintos y por eso no se juntan en una sola línea.
+  const contar = (filas: { origen: "compra" | "gasto" }[]) => {
+    const compras = filas.filter((f) => f.origen === "compra").length;
+    const gastos = filas.length - compras;
+    const partes = [
+      compras > 0 ? `${compras} compra${compras === 1 ? "" : "s"}` : null,
+      gastos > 0 ? `${gastos} gasto${gastos === 1 ? "" : "s"}` : null,
+    ].filter(Boolean);
+    return partes.join(" y ");
+  };
+
+  const fueraDeCaja = [...fueraDeCajaEfectivo, ...fueraDeCajaNequi];
+  if (fueraDeCaja.length > 0) {
     alertas.push({
-      clave: "gastos-efectivo-sin-caja",
-      titulo: `${sueltosEfectivo.length} gasto${sueltosEfectivo.length === 1 ? "" : "s"} en efectivo sin egreso de caja`,
+      clave: "salidas-sin-caja",
+      titulo: `${contar(fueraDeCaja)} sin egreso de caja`,
       detalle:
-        "Esa plata salió del cajón pero el turno no se enteró, así que el arqueo va a mostrar un faltante justo por ese valor. Pasa cuando el gasto se anota con fecha vieja o sin caja abierta.",
-      monto: totalSueltosEfectivo,
+        "Ya están restados de los saldos de arriba, así que la plata cuadra. Lo que no tienen es turno: se registraron sin caja abierta o con fecha vieja, y por eso no van a aparecer en ningún arqueo.",
+      monto: sumar(fueraDeCaja),
     });
   }
 
-  const totalSueltosNequi = sueltosNequi.reduce((s, g) => s + g.monto, 0);
-  if (totalSueltosNequi > 0) {
+  if (conOtroMedio.length > 0) {
     alertas.push({
-      clave: "gastos-nequi-sin-caja",
-      titulo: `${sueltosNequi.length} gasto${sueltosNequi.length === 1 ? "" : "s"} por Nequi sin egreso de caja`,
+      clave: "salidas-otro-medio",
+      titulo: `${contar(conOtroMedio)} con medio de pago “Otro”`,
       detalle:
-        "Ya están restados del saldo de arriba, pero no aparecen en ningún turno. Registrarlos como egreso desde la caja los deja auditables.",
-      monto: totalSueltosNequi,
-    });
-  }
-
-  const comprasFueraDeCaja = [...comprasEfectivo, ...comprasNequi];
-  if (comprasFueraDeCaja.length > 0) {
-    alertas.push({
-      clave: "compras-fuera-de-caja",
-      titulo: `${comprasFueraDeCaja.length} compra${comprasFueraDeCaja.length === 1 ? "" : "s"} sin egreso de caja`,
-      detalle:
-        "Ya están restadas de los saldos de arriba, así que la plata cuadra. Lo que no tienen es turno: se registraron sin caja abierta, y por eso no van a aparecer en ningún arqueo.",
-      monto: sumar(comprasFueraDeCaja),
-    });
-  }
-
-  if (comprasOtro.length > 0) {
-    alertas.push({
-      clave: "compras-otro-medio",
-      titulo: `${comprasOtro.length} compra${comprasOtro.length === 1 ? "" : "s"} pagada${comprasOtro.length === 1 ? "" : "s"} con “Otro”`,
-      detalle:
-        "No es cajón ni es Nequi, así que ningún saldo la sigue y los de arriba están altos por ese valor. Si en realidad salió de alguno de los dos, corrige el medio de pago de la compra.",
-      monto: sumar(comprasOtro),
+        "No es cajón ni es Nequi, así que ningún saldo lo sigue y los de arriba están altos por ese valor. Si en realidad salió de alguno de los dos, corrige el medio de pago.",
+      monto: sumar(conOtroMedio),
     });
   }
 
