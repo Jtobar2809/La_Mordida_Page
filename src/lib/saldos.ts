@@ -45,8 +45,10 @@ export type FuenteSaldo = {
   /** Subconjunto de `salidas`: lo que los socios sacaron por este medio. */
   retiros: number;
   /**
-   * Gastos anotados con este medio que nunca pasaron por la caja. Salieron de
-   * la plata real igual que los demás, pero por otra puerta.
+   * Plata que salió por este medio sin pasar por la caja: un gasto anotado en
+   * contabilidad, una compra al proveedor de la plaza a las 6 a.m. cuando no
+   * hay turno abierto. Salió de la plata real igual que lo demás, pero por
+   * otra puerta.
    */
   salidasFueraDeCaja: number;
   /** ancla + entradas − salidas − salidasFueraDeCaja. */
@@ -92,6 +94,35 @@ export function calcularSaldo(opciones: {
     salidasFueraDeCaja,
     saldo: ancla + entradas - salidas - salidasFueraDeCaja,
   };
+}
+
+export type CompraParaSaldo = {
+  total: number;
+  metodoPago: MetodoPago;
+  fecha: Date;
+};
+
+/**
+ * De un montón de compras que no pasaron por la caja, cuáles descuentan de este
+ * medio de pago.
+ *
+ * `desde` es el ancla del medio —el último arqueo de Nequi, el último cierre
+ * del cajón— y el filtro es estricto (`>`): lo que salió ANTES de ese instante
+ * ya está descontado de lo que se contó ese día, y volver a restarlo cobraría
+ * el mismo bulto de papas dos veces. Sin ancla (nunca se ha arqueado ni cerrado
+ * un turno) cuentan todas, que es lo correcto: no hay conteo previo que las
+ * haya absorbido.
+ *
+ * Las compras pagadas con OTRO nunca entran acá a propósito: no son cajón ni
+ * son Nequi, así que ningún saldo las puede seguir. Salen como alerta.
+ */
+export function comprasQueDescuentan(
+  compras: CompraParaSaldo[],
+  opciones: { metodo: MetodoPago; desde: Date | null }
+): CompraParaSaldo[] {
+  const { metodo, desde } = opciones;
+  if (metodo === "OTRO") return [];
+  return compras.filter((c) => c.metodoPago === metodo && (!desde || c.fecha > desde));
 }
 
 export type EfectivoGuardado = {
@@ -183,7 +214,7 @@ export async function obtenerSaldos(): Promise<Saldos> {
 
     prisma.cajaSesion.findMany({
       orderBy: { abiertaAt: "asc" },
-      select: { codigo: true, montoInicial: true, efectivoContado: true, estado: true },
+      select: { codigo: true, montoInicial: true, efectivoContado: true, estado: true, cerradaAt: true },
     }),
   ]);
 
@@ -197,36 +228,31 @@ export async function obtenerSaldos(): Promise<Saldos> {
 
   const ultimaCerrada = [...sesiones].reverse().find((s) => s.estado === "CERRADA");
 
-  const efectivoBase = calcularSaldo({
-    metodo: "EFECTIVO",
-    ancla: sesionAbierta?.montoInicial ?? 0,
-    movimientos: movimientosTurno,
-  });
-
-  const efectivo = {
-    ...efectivoBase,
-    hayTurnoAbierto: !!sesionAbierta,
-    turnoCodigo: sesionAbierta?.codigo ?? ultimaCerrada?.codigo ?? null,
-    contado: sesionAbierta ? null : (ultimaCerrada?.efectivoContado ?? null),
-    // Sin turno abierto el cajón no tiene un "esperado" que valga: manda lo que
-    // se contó al cerrar. Contar le gana a calcular.
-    saldo: sesionAbierta ? efectivoBase.saldo : (ultimaCerrada?.efectivoContado ?? 0),
-  };
-
-  const guardado = calcularEfectivoGuardado(sesiones);
-
-  // ── Nequi ───────────────────────────────────────────────────────────────
-  // El ancla: el último arqueo si existe, y si no el saldo que se configuró al
-  // empezar a llevar la cuenta. Un arqueo REANCLA —se cuenta desde lo contado,
-  // no desde el histórico— para que un descuadre ya verificado a mano no se
-  // quede restando para siempre.
+  // ── Desde cuándo cuenta cada medio ──────────────────────────────────────
+  // Nequi cuenta desde el último arqueo. El cajón, desde el último cierre: el
+  // momento en que alguien contó los billetes y firmó. Lo que salió ANTES de
+  // esa fecha ya está descontado de lo contado, y restarlo otra vez sería
+  // cobrar la misma compra dos veces.
+  //
+  // El ancla del Nequi es el último arqueo si existe, y si no el saldo que se
+  // configuró al empezar a llevar la cuenta. Un arqueo REANCLA —se cuenta desde
+  // lo contado, no desde el histórico— para que un descuadre ya verificado a
+  // mano no se quede restando para siempre.
   // Los paréntesis no son decorativos: `??` mezclado con `||` sin ellos no
   // compila. Y el `|| 0` hace falta porque el ajuste es texto libre y un campo
   // vacío daría NaN, que envenenaría todas las sumas de abajo en silencio.
   const anclaNequi = ultimoArqueo?.saldoReal ?? (Number(settings.nequiSaldoInicial) || 0);
   const desdeArqueo = ultimoArqueo?.fecha ?? null;
+  const desdeCierre = ultimaCerrada?.cerradaAt ?? null;
 
-  const [movimientosNequi, gastosSueltos, comprasRecientes] = await Promise.all([
+  // Las compras se piden una sola vez, acotadas por la más vieja de las dos
+  // anclas; después cada medio se queda con las suyas. Si alguna de las dos no
+  // existe todavía (nunca se ha arqueado, nunca se ha cerrado un turno) hay que
+  // traerlas todas: no hay fecha desde la cual recortar.
+  const anclaMasVieja =
+    desdeArqueo && desdeCierre ? new Date(Math.min(desdeArqueo.getTime(), desdeCierre.getTime())) : null;
+
+  const [movimientosNequi, gastosSueltos, comprasSueltas] = await Promise.all([
     prisma.movimientoCaja.findMany({
       // `gt` y no `gte`: el arqueo ya contó todo lo que existía en ese instante.
       where: { metodo: "NEQUI", ...(desdeArqueo ? { createdAt: { gt: desdeArqueo } } : {}) },
@@ -241,16 +267,52 @@ export async function obtenerSaldos(): Promise<Saldos> {
       select: { monto: true, metodoPago: true },
     }),
 
-    prisma.compra.aggregate({
-      where: desdeArqueo ? { fecha: { gt: desdeArqueo } } : {},
-      _sum: { total: true },
-      _count: { _all: true },
+    // Las compras que NO salieron por la caja. Las que sí tienen su egreso ya
+    // están restadas dentro de los movimientos del turno; contarlas aquí otra
+    // vez dejaría el saldo bajo por el valor de cada bulto de papas.
+    prisma.compra.findMany({
+      where: { movimientoCaja: null, ...(anclaMasVieja ? { fecha: { gt: anclaMasVieja } } : {}) },
+      select: { total: true, metodoPago: true, fecha: true },
     }),
   ]);
 
   const sueltosNequi = gastosSueltos.filter((g) => g.metodoPago === "NEQUI");
   const sueltosEfectivo = gastosSueltos.filter((g) => g.metodoPago === "EFECTIVO");
 
+  const comprasEfectivo = comprasQueDescuentan(comprasSueltas, { metodo: "EFECTIVO", desde: desdeCierre });
+  const comprasNequi = comprasQueDescuentan(comprasSueltas, { metodo: "NEQUI", desde: desdeArqueo });
+  const comprasOtro = comprasSueltas.filter((c) => c.metodoPago === "OTRO");
+  const sumar = (filas: { total: number }[]) => filas.reduce((s, c) => s + c.total, 0);
+
+  // ── Efectivo en el cajón ────────────────────────────────────────────────
+  // Las compras en efectivo que no pasaron por la caja se restan del cajón
+  // aunque el turno esté cerrado y contado. Es la única excepción a "lo
+  // contado manda", y la razón es que esa plata salió DESPUÉS del conteo: el
+  // conteo describía el cajón de anoche, no el de ahora.
+  const efectivoFueraDeCaja = sumar(comprasEfectivo);
+
+  const efectivoBase = calcularSaldo({
+    metodo: "EFECTIVO",
+    ancla: sesionAbierta?.montoInicial ?? 0,
+    movimientos: movimientosTurno,
+    salidasFueraDeCaja: efectivoFueraDeCaja,
+  });
+
+  const efectivo = {
+    ...efectivoBase,
+    hayTurnoAbierto: !!sesionAbierta,
+    turnoCodigo: sesionAbierta?.codigo ?? ultimaCerrada?.codigo ?? null,
+    contado: sesionAbierta ? null : (ultimaCerrada?.efectivoContado ?? null),
+    // Sin turno abierto el cajón no tiene un "esperado" que valga: manda lo que
+    // se contó al cerrar, menos lo que se haya gastado desde entonces.
+    saldo: sesionAbierta
+      ? efectivoBase.saldo
+      : (ultimaCerrada?.efectivoContado ?? 0) - efectivoFueraDeCaja,
+  };
+
+  const guardado = calcularEfectivoGuardado(sesiones);
+
+  // ── Nequi ───────────────────────────────────────────────────────────────
   const nequiBase = calcularSaldo({
     metodo: "NEQUI",
     ancla: anclaNequi,
@@ -260,11 +322,13 @@ export async function obtenerSaldos(): Promise<Saldos> {
       monto: m.monto,
       estadoOrden: m.order?.status ?? null,
     })),
-    // En Nequi los gastos sueltos SÍ se restan del saldo, y en efectivo no.
-    // No es incoherencia: el cajón tiene un arqueo firmado que manda sobre
-    // cualquier cálculo, y meterle una resta por fuera lo haría mentir. Nequi
-    // no tiene nada más, así que este gasto es el único rastro de esa plata.
-    salidasFueraDeCaja: sueltosNequi.reduce((s, g) => s + g.monto, 0),
+    // En Nequi los gastos sueltos SÍ se restan del saldo, y en efectivo no: el
+    // cajón tiene un arqueo firmado que manda sobre cualquier cálculo, y meterle
+    // una resta por fuera lo haría mentir sobre lo que se contó. Nequi no tiene
+    // nada más, así que este gasto es el único rastro de esa plata. Las compras
+    // son el caso aparte —van en los dos— porque siempre ocurren después del
+    // conteo, no antes.
+    salidasFueraDeCaja: sueltosNequi.reduce((s, g) => s + g.monto, 0) + sumar(comprasNequi),
   });
 
   const nequi = {
@@ -287,24 +351,35 @@ export async function obtenerSaldos(): Promise<Saldos> {
     });
   }
 
-  if (nequiBase.salidasFueraDeCaja > 0) {
+  const totalSueltosNequi = sueltosNequi.reduce((s, g) => s + g.monto, 0);
+  if (totalSueltosNequi > 0) {
     alertas.push({
       clave: "gastos-nequi-sin-caja",
       titulo: `${sueltosNequi.length} gasto${sueltosNequi.length === 1 ? "" : "s"} por Nequi sin egreso de caja`,
       detalle:
         "Ya están restados del saldo de arriba, pero no aparecen en ningún turno. Registrarlos como egreso desde la caja los deja auditables.",
-      monto: nequiBase.salidasFueraDeCaja,
+      monto: totalSueltosNequi,
     });
   }
 
-  const comprasSinRastro = comprasRecientes._sum?.total ?? 0;
-  if (comprasSinRastro > 0) {
+  const comprasFueraDeCaja = [...comprasEfectivo, ...comprasNequi];
+  if (comprasFueraDeCaja.length > 0) {
     alertas.push({
-      clave: "compras-sin-medio",
-      titulo: `${comprasRecientes._count._all} compra${comprasRecientes._count._all === 1 ? "" : "s"} a proveedores`,
+      clave: "compras-fuera-de-caja",
+      titulo: `${comprasFueraDeCaja.length} compra${comprasFueraDeCaja.length === 1 ? "" : "s"} sin egreso de caja`,
       detalle:
-        "Una compra no anota con qué se pagó, así que por sí sola no descuenta de ningún saldo. Si le pagaste al proveedor del cajón o por Nequi y no lo registraste como egreso, los saldos de arriba están altos por ese valor.",
-      monto: comprasSinRastro,
+        "Ya están restadas de los saldos de arriba, así que la plata cuadra. Lo que no tienen es turno: se registraron sin caja abierta, y por eso no van a aparecer en ningún arqueo.",
+      monto: sumar(comprasFueraDeCaja),
+    });
+  }
+
+  if (comprasOtro.length > 0) {
+    alertas.push({
+      clave: "compras-otro-medio",
+      titulo: `${comprasOtro.length} compra${comprasOtro.length === 1 ? "" : "s"} pagada${comprasOtro.length === 1 ? "" : "s"} con “Otro”`,
+      detalle:
+        "No es cajón ni es Nequi, así que ningún saldo la sigue y los de arriba están altos por ese valor. Si en realidad salió de alguno de los dos, corrige el medio de pago de la compra.",
+      monto: sumar(comprasOtro),
     });
   }
 

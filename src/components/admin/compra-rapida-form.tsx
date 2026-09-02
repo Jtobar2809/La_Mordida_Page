@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { registrarCompra } from "@/actions/admin/compras";
+import { METODOS_COMPRA } from "@/components/admin/compra-form";
 import { UNIDAD_LABEL, costoPorUnidad, formatCosto, redondearCantidad } from "@/lib/costos";
-import type { Insumo, Proveedor } from "@prisma/client";
+import type { Insumo, MetodoPago, Proveedor } from "@prisma/client";
 
 /**
  * Registrar de una sola vez la compra de UN insumo: "llegaron 4.000 g, pagué
@@ -36,6 +37,7 @@ export function CompraRapidaForm({
   const [cantidad, setCantidad] = React.useState(insumo.cantidadReferencia || 1);
   const [total, setTotal] = React.useState(insumo.precioReferencia || 0);
   const [fecha, setFecha] = React.useState(new Date().toISOString().slice(0, 10));
+  const [metodoPago, setMetodoPago] = React.useState<MetodoPago>("EFECTIVO");
   const [notas, setNotas] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
@@ -60,6 +62,7 @@ export function CompraRapidaForm({
     const result = await registrarCompra({
       proveedorId,
       fecha,
+      metodoPago,
       notas: notas.trim() || undefined,
       items: [{ insumoId: insumo.id, cantidad, costoUnitario: costoNuevo }],
     });
@@ -67,6 +70,7 @@ export function CompraRapidaForm({
 
     if (!result.success) return toast.error(result.error);
     toast.success(`Compra registrada — ${insumo.nombre} en ${redondearCantidad(stockResultante)} ${unidad}`);
+    if (result.aviso) toast.warning(result.aviso, { duration: 8000 });
     onDone();
   };
 
@@ -89,15 +93,31 @@ export function CompraRapidaForm({
         a {formatCosto(insumo.costoUnitario)} por {unidad}.
       </p>
 
-      <div>
-        <Label htmlFor="proveedorId">¿A quién le compraste?</Label>
-        <Select id="proveedorId" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          {proveedores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nombre}
-            </option>
-          ))}
-        </Select>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="proveedorId">¿A quién le compraste?</Label>
+          <Select id="proveedorId" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="metodoPagoCompraRapida">¿Con qué pagaste?</Label>
+          <Select
+            id="metodoPagoCompraRapida"
+            value={metodoPago}
+            onChange={(e) => setMetodoPago(e.target.value as MetodoPago)}
+          >
+            {METODOS_COMPRA.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="rounded-xl border border-charcoal-200 p-3 dark:border-charcoal-600">
@@ -113,7 +133,10 @@ export function CompraRapidaForm({
           </div>
         </div>
         <p className="mt-2 text-xs text-charcoal-400">
-          Sale a <strong className="text-charcoal-700 dark:text-cream">{formatCosto(costoNuevo)}</strong> por {unidad}.
+          Sale a <strong className="text-charcoal-700 dark:text-cream">{formatCosto(costoNuevo)}</strong> por {unidad}.{" "}
+          {metodoPago === "OTRO"
+            ? "Pagada con “Otro” no baja de ningún saldo."
+            : `Esos $${Math.round(total).toLocaleString("es-CO")} se descuentan de tu ${metodoPago === "NEQUI" ? "Nequi" : "efectivo"}.`}
         </p>
       </div>
 

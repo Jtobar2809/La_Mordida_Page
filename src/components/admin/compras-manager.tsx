@@ -6,9 +6,15 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { CompraForm } from "@/components/admin/compra-form";
-import type { Insumo, Proveedor, Compra, CompraItem } from "@prisma/client";
+import type { Insumo, MetodoPago, Proveedor, Compra, CompraItem } from "@prisma/client";
 
 type CompraConDetalle = Compra & { proveedor: { nombre: string }; items: CompraItem[] };
+
+const METODO_LABEL: Record<MetodoPago, string> = {
+  EFECTIVO: "Efectivo",
+  NEQUI: "Nequi",
+  OTRO: "Otro",
+};
 
 export function ComprasManager({
   compras,
@@ -38,6 +44,7 @@ export function ComprasManager({
               <th className="px-4 py-3">Proveedor</th>
               <th className="px-4 py-3">Insumos</th>
               <th className="px-4 py-3">Total</th>
+              <th className="px-4 py-3">Pago</th>
               <th className="px-4 py-3">Notas</th>
             </tr>
           </thead>
@@ -48,12 +55,13 @@ export function ComprasManager({
                 <td className="px-4 py-3 font-medium text-charcoal-900 dark:text-cream">{c.proveedor.nombre}</td>
                 <td className="px-4 py-3 text-charcoal-400">{c.items.length} línea(s)</td>
                 <td className="px-4 py-3 font-mono font-semibold">${c.total.toLocaleString("es-CO")}</td>
+                <td className="px-4 py-3 text-charcoal-400">{METODO_LABEL[c.metodoPago] ?? c.metodoPago}</td>
                 <td className="px-4 py-3 text-charcoal-400">{c.notas || "—"}</td>
               </tr>
             ))}
             {compras.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-charcoal-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-charcoal-400">
                   Aún no hay compras registradas.
                 </td>
               </tr>

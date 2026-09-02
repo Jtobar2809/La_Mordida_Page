@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/actions/auth";
 import { redondearCosto, referenciaDesdeCosto } from "@/lib/costos";
+import { MetodoPago } from "@prisma/client";
 
 async function requireAdmin() {
   const session = await auth();
@@ -23,6 +24,10 @@ const compraItemSchema = z.object({
 
 const compraSchema = z.object({
   proveedorId: z.string().min(1, "Elige un proveedor"),
+  // Con qué se pagó. Es lo que permite que la compra baje de la plata real y no
+  // solo suba el stock. EFECTIVO por defecto porque es como se le paga al 90%
+  // de los proveedores de la plaza.
+  metodoPago: z.nativeEnum(MetodoPago).default("EFECTIVO"),
   notas: z.string().optional(),
   // Opcional: sin fecha la compra queda con la de hoy. Se acepta para poder
   // registrar el domingo lo que se compró el sábado sin que caiga en el día
@@ -65,7 +70,7 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
   const parsed = compraSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
 
-  const { proveedorId, notas, items, fecha } = parsed.data;
+  const { proveedorId, metodoPago, notas, items, fecha } = parsed.data;
 
   const insumoIds = [...new Set(items.map((i) => i.insumoId))];
   const insumosExistentes = await prisma.insumo.count({ where: { id: { in: insumoIds } } });
@@ -76,18 +81,48 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
   // El total de la compra sí se redondea a peso: es la plata que se pagó.
   const total = Math.round(items.reduce((sum, item) => sum + item.cantidad * item.costoUnitario, 0));
 
+  // Si la compra es de hoy y hay turno abierto, el pago al proveedor se anota
+  // también como egreso de caja: así sale del arqueo del turno y queda quién,
+  // cuándo y en cuál sesión, en vez de ser una resta invisible. Si no hay turno
+  // —se compró en la plaza a las 6 a.m.— la compra igual descuenta el saldo,
+  // pero por fuera de la caja (ver `salidasFueraDeCaja` en lib/saldos.ts).
+  // OTRO nunca genera egreso: no es plata del cajón ni del Nequi.
+  const fechaCompra = fechaLocal(fecha);
+  const esDeHoy = !fechaCompra || fechaCompra.toDateString() === new Date().toDateString();
+  const sesion =
+    metodoPago !== "OTRO" && esDeHoy
+      ? await prisma.cajaSesion.findFirst({ where: { estado: "ABIERTA" }, select: { id: true, codigo: true } })
+      : null;
+
+  const proveedor = await prisma.proveedor.findUnique({ where: { id: proveedorId }, select: { nombre: true } });
+
   try {
     await prisma.$transaction(async (tx) => {
       const compra = await tx.compra.create({
         data: {
           proveedorId,
+          metodoPago,
           notas,
           total,
-          ...(fechaLocal(fecha) ? { fecha: fechaLocal(fecha) } : {}),
+          ...(fechaCompra ? { fecha: fechaCompra } : {}),
           createdById: userId,
           items: { create: items.map((i) => ({ insumoId: i.insumoId, cantidad: i.cantidad, costoUnitario: i.costoUnitario })) },
         },
       });
+
+      if (sesion) {
+        await tx.movimientoCaja.create({
+          data: {
+            sesionId: sesion.id,
+            tipo: "EGRESO",
+            metodo: metodoPago,
+            monto: total,
+            concepto: `Compra a ${proveedor?.nombre ?? "proveedor"}`,
+            compraId: compra.id,
+            createdById: userId,
+          },
+        });
+      }
 
       for (const item of items) {
         // Se relee dentro de la transacción (no del request original) para que,
@@ -129,5 +164,21 @@ export async function registrarCompra(input: unknown): Promise<ActionResult> {
   revalidatePath("/admin/inventario");
   revalidatePath("/admin/inventario/compras");
   revalidatePath("/admin/inventario/recetas");
-  return { success: true };
+  revalidatePath("/admin/caja");
+  revalidatePath("/admin/contabilidad");
+  return {
+    success: true,
+    ...(metodoPago === "OTRO"
+      ? {
+          aviso:
+            "Quedó registrada, pero pagada con “Otro” no descuenta ni del cajón ni del Nequi. Si salió de alguno de los dos, edítala al medio correcto.",
+        }
+      : sesion
+        ? { aviso: `Se descontó del turno ${sesion.codigo} como egreso.` }
+        : {
+            aviso: esDeHoy
+              ? "Se descontó del saldo, pero no hay caja abierta: el egreso no aparece en ningún turno."
+              : "Se descontó del saldo. Como no es una compra de hoy, no se tocó la caja.",
+          }),
+  };
 }

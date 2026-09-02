@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { calcularSaldo, calcularEfectivoGuardado, type MovimientoParaSaldo } from "./saldos";
+import {
+  calcularSaldo,
+  calcularEfectivoGuardado,
+  comprasQueDescuentan,
+  type CompraParaSaldo,
+  type MovimientoParaSaldo,
+} from "./saldos";
 import { calcularResumenCaja, type MovimientoParaArqueo } from "./caja";
 
 const mov = (
@@ -86,6 +92,65 @@ describe("calcularSaldo", () => {
     // error de registro, y esconderlo con Math.max lo volvería invisible.
     const r = calcularSaldo({ metodo: "NEQUI", ancla: 10000, movimientos: [mov("EGRESO", "NEQUI", 30000)] });
     expect(r.saldo).toBe(-20000);
+  });
+});
+
+const compra = (metodoPago: CompraParaSaldo["metodoPago"], total: number, fecha: string): CompraParaSaldo => ({
+  metodoPago,
+  total,
+  fecha: new Date(fecha),
+});
+
+describe("comprasQueDescuentan", () => {
+  it("una compra en efectivo baja el cajón aunque el turno ya se haya contado", () => {
+    // El caso de todos los días: el turno cerró anoche con los billetes
+    // contados y a las 6 a.m. se compró la carne. Esa plata ya no está, y el
+    // conteo de anoche no la puede describir porque pasó después.
+    const compras = [compra("EFECTIVO", 120000, "2026-09-01T11:00:00Z")];
+    const r = comprasQueDescuentan(compras, { metodo: "EFECTIVO", desde: new Date("2026-09-01T04:00:00Z") });
+    expect(r).toHaveLength(1);
+    expect(r[0]?.total).toBe(120000);
+  });
+
+  it("lo comprado ANTES del ancla no se vuelve a restar", () => {
+    // Ese bulto de papas ya salió del cajón antes de que alguien lo contara,
+    // así que el conteo ya lo tiene descontado. Restarlo otra vez cobraría la
+    // misma compra dos veces y el saldo quedaría bajo para siempre.
+    const compras = [compra("EFECTIVO", 80000, "2026-08-30T15:00:00Z")];
+    expect(comprasQueDescuentan(compras, { metodo: "EFECTIVO", desde: new Date("2026-08-31T02:00:00Z") })).toHaveLength(0);
+  });
+
+  it("sin ancla cuentan todas: no hubo conteo que las absorbiera", () => {
+    const compras = [compra("NEQUI", 40000, "2026-01-05T00:00:00Z"), compra("NEQUI", 15000, "2026-09-01T00:00:00Z")];
+    const r = comprasQueDescuentan(compras, { metodo: "NEQUI", desde: null });
+    expect(r.reduce((s, c) => s + c.total, 0)).toBe(55000);
+  });
+
+  it("cada medio se lleva solo lo suyo", () => {
+    // Pagar la carne por Nequi no puede bajar el cajón. Es la misma regla que
+    // separa los movimientos, aplicada a las compras.
+    const compras = [compra("EFECTIVO", 30000, "2026-09-01T12:00:00Z"), compra("NEQUI", 50000, "2026-09-01T12:00:00Z")];
+    expect(comprasQueDescuentan(compras, { metodo: "EFECTIVO", desde: null })).toHaveLength(1);
+    expect(comprasQueDescuentan(compras, { metodo: "EFECTIVO", desde: null })[0]?.total).toBe(30000);
+  });
+
+  it("lo pagado con OTRO no descuenta de ningún lado", () => {
+    // Fiado, tarjeta, la plata del bolsillo de un socio: existe, pero no es
+    // ninguna de las dos bolsas que este cuadro sigue. Restarlo de cualquiera
+    // de las dos sería inventar de dónde salió.
+    const compras = [compra("OTRO", 70000, "2026-09-01T12:00:00Z")];
+    expect(comprasQueDescuentan(compras, { metodo: "OTRO", desde: null })).toHaveLength(0);
+    expect(comprasQueDescuentan(compras, { metodo: "EFECTIVO", desde: null })).toHaveLength(0);
+    expect(comprasQueDescuentan(compras, { metodo: "NEQUI", desde: null })).toHaveLength(0);
+  });
+
+  it("la compra que salió por la caja no llega hasta aquí", () => {
+    // No es una regla de esta función sino de quien la llama: `obtenerSaldos`
+    // solo le pasa compras sin egreso de caja. Las que sí lo tienen ya están
+    // restadas dentro de los movimientos del turno, y contarlas otra vez
+    // dejaría el saldo bajo por el valor de cada compra. El test fija el
+    // contrato: lo que entra vacío, sale vacío.
+    expect(comprasQueDescuentan([], { metodo: "EFECTIVO", desde: null })).toEqual([]);
   });
 });
 

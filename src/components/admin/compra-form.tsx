@@ -10,7 +10,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { registrarCompra } from "@/actions/admin/compras";
 import { UNIDAD_LABEL, costoPorUnidad, formatCosto } from "@/lib/costos";
-import type { Insumo, Proveedor } from "@prisma/client";
+import type { Insumo, MetodoPago, Proveedor } from "@prisma/client";
+
+export const METODOS_COMPRA: { value: MetodoPago; label: string }[] = [
+  { value: "EFECTIVO", label: "Efectivo" },
+  { value: "NEQUI", label: "Nequi" },
+  { value: "OTRO", label: "Otro / fiado" },
+];
 
 // Se captura lo que dice la factura —cuánto vino y cuánto se pagó por eso— en vez
 // del costo de una sola unidad, que casi nunca es un número redondo y obligaba a
@@ -21,6 +27,7 @@ const FILA_VACIA = (insumos: Insumo[]): Fila => ({ insumoId: insumos[0]?.id ?? "
 
 export function CompraForm({ proveedores, insumos, onDone }: { proveedores: Proveedor[]; insumos: Insumo[]; onDone: () => void }) {
   const [proveedorId, setProveedorId] = React.useState(proveedores[0]?.id ?? "");
+  const [metodoPago, setMetodoPago] = React.useState<MetodoPago>("EFECTIVO");
   const [notas, setNotas] = React.useState("");
   const [filas, setFilas] = React.useState<Fila[]>([FILA_VACIA(insumos)]);
   const [loading, setLoading] = React.useState(false);
@@ -44,24 +51,41 @@ export function CompraForm({ proveedores, insumos, onDone }: { proveedores: Prov
       cantidad: f.cantidad,
       costoUnitario: costoPorUnidad(f.totalLinea, f.cantidad),
     }));
-    const result = await registrarCompra({ proveedorId, notas: notas || undefined, items });
+    const result = await registrarCompra({ proveedorId, metodoPago, notas: notas || undefined, items });
     setLoading(false);
     if (!result.success) return toast.error(result.error);
     toast.success("Compra registrada — stock y costos actualizados");
+    if (result.aviso) toast.warning(result.aviso, { duration: 8000 });
     onDone();
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <Label htmlFor="proveedorId">Proveedor</Label>
-        <Select id="proveedorId" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
-          {proveedores.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nombre}
-            </option>
-          ))}
-        </Select>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="proveedorId">Proveedor</Label>
+          <Select id="proveedorId" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)}>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="metodoPagoCompra">¿Con qué pagaste?</Label>
+          <Select
+            id="metodoPagoCompra"
+            value={metodoPago}
+            onChange={(e) => setMetodoPago(e.target.value as MetodoPago)}
+          >
+            {METODOS_COMPRA.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -110,9 +134,16 @@ export function CompraForm({ proveedores, insumos, onDone }: { proveedores: Prov
         <Textarea id="notas" value={notas} onChange={(e) => setNotas(e.target.value)} rows={2} placeholder="Ej: Factura #045" />
       </div>
 
-      <div className="flex items-center justify-between rounded-xl bg-charcoal-50 px-4 py-3 dark:bg-charcoal-900/40">
-        <span className="text-sm text-charcoal-400">Total de la compra</span>
-        <span className="font-display text-lg text-charcoal-900 dark:text-cream">${total.toLocaleString("es-CO")}</span>
+      <div className="rounded-xl bg-charcoal-50 px-4 py-3 dark:bg-charcoal-900/40">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-charcoal-400">Total de la compra</span>
+          <span className="font-display text-lg text-charcoal-900 dark:text-cream">${total.toLocaleString("es-CO")}</span>
+        </div>
+        <p className="mt-1 text-xs text-charcoal-400">
+          {metodoPago === "OTRO"
+            ? "Pagada con “Otro” no baja de ningún saldo: no es cajón ni Nequi."
+            : `Se descuenta de tu saldo en ${metodoPago === "NEQUI" ? "Nequi" : "efectivo"}, y si hay caja abierta queda además como egreso del turno.`}
+        </p>
       </div>
 
       <Button type="submit" disabled={loading || proveedores.length === 0} className="w-full">

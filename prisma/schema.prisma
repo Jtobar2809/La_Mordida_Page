@@ -443,11 +443,18 @@ model Compra {
   proveedorId String
   fecha       DateTime     @default(now())
   total       Int          @default(0)
+  /// Con qué se le pagó al proveedor. Sin esto una compra sumaba stock pero no
+  /// bajaba de ninguna parte, y el cuadro de saldos mostraba una plata que ya
+  /// no estaba: el bulto de papas estaba en la bodega y su valor seguía en el
+  /// cajón. OTRO existe para lo que no es cajón ni Nequi (fiado, tarjeta) y por
+  /// eso no descuenta ningún saldo, solo avisa.
+  metodoPago  MetodoPago   @default(EFECTIVO)
   notas       String?
   createdById String?
   createdAt   DateTime     @default(now())
   proveedor   Proveedor    @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
   items       CompraItem[]
+  movimientoCaja MovimientoCaja?
 
   @@index([proveedorId])
   @@index([fecha])
@@ -556,12 +563,25 @@ model MovimientoCaja {
   /// es un gasto (el costo entra cuando el insumo se consume), y mover plata a
   /// la caja fuerte no gasta nada.
   gastoId     String?            @unique
+  /// La compra a proveedor que este egreso pagó, si pagó alguna.
+  ///
+  /// Es el mismo vínculo que `gastoId` pero para el otro libro: sin él, pagar
+  /// el bulto de papas del cajón salía del arqueo y el saldo de la app no se
+  /// enteraba, o —peor— se restaba dos veces si además se anotaba el egreso a
+  /// mano. Con el vínculo, `lib/saldos.ts` sabe cuáles compras ya pasaron por
+  /// la caja y solo descuenta por fuera las que no.
+  ///
+  /// A diferencia de un gasto, esto NO crea un `Gasto`: pagarle al proveedor no
+  /// es un gasto, el costo entra cuando el insumo se consume. Anotarlo en los
+  /// dos lados contaría la misma carne dos veces.
+  compraId    String?            @unique
   createdById String?
   createdAt   DateTime           @default(now())
 
   sesion CajaSesion @relation(fields: [sesionId], references: [id], onDelete: Cascade)
   order  Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
   gasto  Gasto?     @relation(fields: [gastoId], references: [id], onDelete: SetNull)
+  compra Compra?    @relation(fields: [compraId], references: [id], onDelete: SetNull)
 
   @@index([sesionId])
   @@index([tipo])
