@@ -6,7 +6,6 @@ import { Banknote, Smartphone, Split } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cobrarVenta } from "@/actions/admin/caja";
 import { formatCOP, cn } from "@/lib/utils";
@@ -42,9 +41,23 @@ export function CobroModal({
   // Vacío = venta de mostrador, que es el caso normal. Solo cuando se elige a
   // alguien la venta queda a su nombre y aparece en su historial de Pedidos.
   const [clienteId, setClienteId] = React.useState("");
+  const [buscaCliente, setBuscaCliente] = React.useState("");
   const [cargando, setCargando] = React.useState(false);
 
   const clienteElegido = clientes.find((c) => c.id === clienteId) ?? null;
+
+  // Se busca por nombre y por teléfono: en el mostrador la cajera casi siempre
+  // tiene a mano el número del domicilio anterior, no el nombre escrito igual
+  // que en la base. El tope de 6 es para que la lista no empuje los botones de
+  // cobrar fuera de la pantalla del celular.
+  const terminoCliente = buscaCliente.trim().toLowerCase();
+  const coincidencias = terminoCliente
+    ? clientes.filter(
+        (c) =>
+          (c.name ?? "").toLowerCase().includes(terminoCliente) || (c.phone ?? "").includes(terminoCliente)
+      )
+    : clientes;
+  const visibles = coincidencias.slice(0, 6);
 
   // Cuánto de la venta se paga en efectivo según el modo elegido.
   const parteEfectivo =
@@ -203,16 +216,67 @@ export function CobroModal({
         )}
 
         <div>
-          <Label htmlFor="clienteId">Cliente (opcional)</Label>
-          <Select id="clienteId" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            <option value="">Mostrador — sin cliente</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name ?? "Sin nombre"}
-                {c.phone ? ` · ${c.phone}` : ""}
-              </option>
-            ))}
-          </Select>
+          <Label htmlFor="buscaCliente">Cliente (opcional)</Label>
+
+          {clienteElegido ? (
+            // Elegido, se colapsa a una sola línea: el buscador ya cumplió y
+            // dejarlo abierto solo invita a cambiar por error a quién se le
+            // está cobrando.
+            <div className="flex items-center justify-between rounded-xl border border-ember-200 bg-ember-50 px-3 py-2 dark:border-ember-800 dark:bg-ember-900/20">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-charcoal-900 dark:text-cream">
+                  {clienteElegido.name ?? "Sin nombre"}
+                </p>
+                {clienteElegido.phone && <p className="text-xs text-charcoal-400">{clienteElegido.phone}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setClienteId("");
+                  setBuscaCliente("");
+                }}
+                className="shrink-0 text-xs font-medium text-ember-600 hover:underline dark:text-ember-400"
+              >
+                Quitar
+              </button>
+            </div>
+          ) : (
+            <>
+              <Input
+                id="buscaCliente"
+                value={buscaCliente}
+                onChange={(e) => setBuscaCliente(e.target.value)}
+                placeholder="Busca por nombre o teléfono"
+                autoComplete="off"
+              />
+              {terminoCliente !== "" && (
+                <div className="mt-2 space-y-1">
+                  {visibles.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setClienteId(c.id)}
+                      className="flex w-full items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-charcoal-50 dark:hover:bg-charcoal-700"
+                    >
+                      <span className="truncate font-medium text-charcoal-900 dark:text-cream">
+                        {c.name ?? "Sin nombre"}
+                      </span>
+                      {c.phone && <span className="shrink-0 text-xs text-charcoal-400">{c.phone}</span>}
+                    </button>
+                  ))}
+                  {visibles.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-charcoal-400">Ningún cliente registrado coincide.</p>
+                  )}
+                  {coincidencias.length > visibles.length && (
+                    <p className="px-3 text-xs text-charcoal-400">
+                      +{coincidencias.length - visibles.length} más. Escribe un poco más para acotar.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
           <p className="mt-1 text-xs text-charcoal-400">
             {clienteElegido
               ? `La venta queda a nombre de ${clienteElegido.name ?? "ese cliente"} y aparece en su historial.`
