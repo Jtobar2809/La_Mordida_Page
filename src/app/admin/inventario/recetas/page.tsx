@@ -6,7 +6,7 @@ import { obtenerPanoramaOperacion } from "@/lib/operacion";
 export const dynamic = "force-dynamic";
 
 export default async function AdminRecetasPage() {
-  const [products, insumos, panorama] = await Promise.all([
+  const [products, insumos, panorama, categorias] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -17,6 +17,7 @@ export default async function AdminRecetasPage() {
     }),
     prisma.insumo.findMany({ where: { activo: true }, orderBy: { nombre: "asc" } }),
     obtenerPanoramaOperacion(),
+    prisma.category.findMany({ where: { active: true }, select: { id: true, name: true }, orderBy: { order: "asc" } }),
   ]);
 
   return (
@@ -33,6 +34,7 @@ export default async function AdminRecetasPage() {
           insumos={insumos}
           tasaOperacion={panorama.tasaOperacion}
           motivoSinTasa={panorama.motivoSinTasa}
+          categorias={categorias}
         />
       )}
     </div>

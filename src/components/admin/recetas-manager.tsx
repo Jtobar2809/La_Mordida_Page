@@ -9,8 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Modal } from "@/components/ui/modal";
 import { upsertRecetaItem, deleteRecetaItem } from "@/actions/admin/recetas";
 import { upsertComboItem, deleteComboItem, marcarComoCombo } from "@/actions/admin/combos";
+import { crearProductoRapido } from "@/actions/admin/products";
 import { UNIDAD_LABEL, formatCosto, costoDeProducto, costoDeReceta } from "@/lib/costos";
 import type { MotivoSinTasa } from "@/lib/operacion";
 import type { ComboItem, Insumo, Product, RecetaItem } from "@prisma/client";
@@ -28,6 +31,7 @@ export function RecetasManager({
   insumos,
   tasaOperacion,
   motivoSinTasa,
+  categorias,
 }: {
   products: ProductWithReceta[];
   insumos: Insumo[];
@@ -39,6 +43,7 @@ export function RecetasManager({
    */
   tasaOperacion: number | null;
   motivoSinTasa: MotivoSinTasa | null;
+  categorias: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [productId, setProductId] = React.useState(products[0]?.id ?? "");
@@ -46,6 +51,7 @@ export function RecetasManager({
   const [cantidad, setCantidad] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
 
+  const [creandoProducto, setCreandoProducto] = React.useState(false);
   const [nuevoProductoId, setNuevoProductoId] = React.useState("");
   const [cantidadCombo, setCantidadCombo] = React.useState(1);
 
@@ -164,6 +170,9 @@ export function RecetasManager({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[280px_1fr]">
       <div className="space-y-1">
+        <Button onClick={() => setCreandoProducto(true)} className="mb-3 w-full">
+          <Plus className="h-4 w-4" /> Nuevo producto
+        </Button>
         {products.map((p) => (
           <button
             key={p.id}
@@ -488,6 +497,111 @@ export function RecetasManager({
           )}
         </div>
       )}
+
+      <Modal open={creandoProducto} onClose={() => setCreandoProducto(false)} title="Nuevo producto">
+        <NuevoProductoForm
+          categorias={categorias}
+          onCreado={(id) => {
+            setCreandoProducto(false);
+            // Se selecciona de una: el punto de crearlo desde aquí es quedar
+            // armando su receta, no volver a buscarlo en la lista.
+            setProductId(id);
+            router.refresh();
+          }}
+        />
+      </Modal>
     </div>
+  );
+}
+
+/**
+ * Crear un producto con lo mínimo para venderlo.
+ *
+ * Solo nombre, precio y categoría. El formulario completo de Productos pide
+ * descripción, foto, nivel de picante y extras — nada de eso hace falta para
+ * cobrar, y pedirlo aquí convertía "sacar un plato nuevo" en un trámite que
+ * había que hacer en otra sección antes de poder costearlo.
+ */
+function NuevoProductoForm({
+  categorias,
+  onCreado,
+}: {
+  categorias: { id: string; name: string }[];
+  onCreado: (id: string) => void;
+}) {
+  const [form, setForm] = React.useState({ name: "", price: 0, categoryId: categorias[0]?.id ?? "" });
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const result = await crearProductoRapido(form);
+    setLoading(false);
+    if (!result.success) return toast.error(result.error);
+    toast.success("Producto creado — ya se puede cobrar en la caja");
+    if (result.data) onCreado(result.data.id);
+  };
+
+  if (categorias.length === 0) {
+    return (
+      <p className="text-sm text-charcoal-400">
+        Primero necesitas al menos una categoría. Créala en{" "}
+        <Link href="/admin/categorias" className="underline hover:text-ember-500">
+          Categorías
+        </Link>
+        .
+      </p>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <Label htmlFor="nombreProducto">Nombre</Label>
+        <Input
+          id="nombreProducto"
+          required
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Ej: Hamburguesa Doble Tocineta"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="precioProducto">Precio de venta</Label>
+          <Input
+            id="precioProducto"
+            type="number"
+            min={0}
+            required
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <Label htmlFor="categoriaProducto">Categoría</Label>
+          <Select
+            id="categoriaProducto"
+            value={form.categoryId}
+            onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+          >
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      <p className="rounded-xl bg-charcoal-50 p-3 text-xs text-charcoal-400 dark:bg-charcoal-900/40">
+        Con esto ya se puede cobrar en la caja. La foto, la descripción y los extras se agregan después en Productos —
+        para vender no hacen falta, y al crearlo aquí quedas armándole la receta de una vez.
+      </p>
+
+      <Button type="submit" disabled={loading} className="w-full">
+        {loading ? "Creando..." : "Crear y armar su receta"}
+      </Button>
+    </form>
   );
 }

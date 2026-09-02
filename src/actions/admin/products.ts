@@ -177,3 +177,58 @@ export async function toggleProductAvailability(id: string, available: boolean):
   revalidatePath("/menu");
   return { success: true };
 }
+
+const productoRapidoSchema = z.object({
+  name: z.string().min(2, "Ponle un nombre al producto"),
+  price: z.coerce.number().int().positive("El precio debe ser mayor a 0"),
+  categoryId: z.string().min(1, "Elige una categoría"),
+});
+
+/**
+ * Crea un producto con lo mínimo para poder venderlo: nombre, precio y
+ * categoría.
+ *
+ * Existe porque para sacar un plato nuevo había que ir a Productos, llenar un
+ * formulario que pide descripción, foto, nivel de picante y extras, y recién
+ * después volver a Inventario › Recetas a costearlo. Nada de eso hace falta
+ * para cobrar: la caja muestra todos los productos de categorías activas, así
+ * que apenas se crea ya se puede vender.
+ *
+ * La descripción se rellena con el nombre en vez de pedirla — es obligatoria en
+ * el modelo y en la carta se edita después, cuando haya foto y texto de verdad.
+ */
+export async function crearProductoRapido(input: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { success: false, error: "No autorizado" };
+  }
+
+  const parsed = productoRapidoSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? "Datos inválidos" };
+
+  const { name, price, categoryId } = parsed.data;
+
+  try {
+    const creado = await prisma.product.create({
+      data: {
+        name,
+        slug: slugify(name),
+        description: name,
+        price,
+        categoryId,
+        ingredients: [],
+        available: true,
+      },
+      select: { id: true },
+    });
+
+    revalidatePath("/admin/inventario/recetas");
+    revalidatePath("/admin/productos");
+    revalidatePath("/admin/caja");
+    revalidatePath("/menu");
+    return { success: true, data: { id: creado.id } };
+  } catch {
+    return { success: false, error: "Ya existe un producto con ese nombre." };
+  }
+}
