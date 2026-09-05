@@ -308,6 +308,10 @@ export function EstadoResultadosView({ datos }: { datos: EstadoResultados }) {
                     ? `Consumiste ${formatCosto(-variacionInventario)} más de lo que compraste: este mes se gastó despensa que ya tenías.`
                     : "Compraste exactamente lo que consumiste."}
               </p>
+              <p className="mt-1">
+                Arriba, en el flujo del mes, esa compra sí sale completa: para el bolsillo salió toda, para la utilidad
+                solo lo que se consumió.
+              </p>
             </div>
           </div>
         </div>

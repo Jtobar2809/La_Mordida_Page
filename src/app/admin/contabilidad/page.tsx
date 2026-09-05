@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { EstadoResultadosView } from "@/components/admin/estado-resultados";
+import { FlujoPanel } from "@/components/admin/flujo-panel";
 import { GastosManager } from "@/components/admin/gastos-manager";
 import { ContabilidadTabs } from "@/components/admin/contabilidad-tabs";
 import { RetirosPanel } from "@/components/admin/retiros-panel";
 import { SaldosPanel } from "@/components/admin/saldos-panel";
 import { obtenerEstadoResultados, MESES } from "@/lib/contabilidad";
+import { obtenerFlujoDelMes } from "@/lib/flujo";
 import { obtenerCupoRetiros } from "@/lib/retiros";
 import { obtenerSaldos } from "@/lib/saldos";
 
@@ -35,8 +37,11 @@ export default async function AdminContabilidadPage({
   const desde = new Date(anio, mes - 1, 1);
   const hasta = new Date(anio, mes, 1);
 
-  const [datos, gastos, cupoRetiros, saldos] = await Promise.all([
+  const [datos, flujo, gastos, cupoRetiros, saldos] = await Promise.all([
     obtenerEstadoResultados(anio, mes),
+    // Las compras entran acá como lo que son para el bolsillo: una salida. En
+    // `datos` no restan, y las dos cosas son ciertas a la vez — ver lib/flujo.
+    obtenerFlujoDelMes(anio, mes),
     prisma.gasto.findMany({ where: { fecha: { gte: desde, lt: hasta } }, orderBy: { fecha: "desc" } }),
     obtenerCupoRetiros(anio, mes),
     // No recibe el mes a propósito: un saldo es de hoy, no de agosto. Ver
@@ -87,6 +92,10 @@ export default async function AdminContabilidadPage({
           terminado. La utilidad va a mejorar a medida que entren más ventas.
         </p>
       )}
+
+      {/* Primero la plata, después la explicación. La pregunta que uno trae al
+          entrar es cuánto quedó, no cuál fue el margen bruto. */}
+      <FlujoPanel flujo={flujo} estado={datos} />
 
       <EstadoResultadosView datos={datos} />
 
