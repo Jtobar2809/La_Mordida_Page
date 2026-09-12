@@ -70,7 +70,7 @@ export function esCosteable(p: { recetaItems: unknown[]; comboItems?: unknown[];
   return p.costo > 0 && (p.recetaItems.length > 0 || (p.comboItems?.length ?? 0) > 0);
 }
 
-const CATEGORIAS_PLATO = ["Hamburguesas", "Hot Dogs", "Menú Infantil"];
+const CATEGORIAS_PLATO = ["Hamburguesas", "Menú Infantil"];
 const CATEGORIA_ACOMPANAMIENTO = "Acompañamientos";
 const CATEGORIA_BEBIDA = "Bebidas";
 

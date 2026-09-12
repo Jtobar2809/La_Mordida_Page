@@ -6,12 +6,11 @@ import { MenuBrowser } from "@/components/menu/menu-browser";
 export const revalidate = 30;
 
 export const metadata = {
-  title: "Menú | Hamburguesas y Perros Calientes en Popayán",
+  title: "Menú | Hamburguesas en Popayán",
   description:
-    "Explora el menú completo de La Mordida: hamburguesas y perros calientes artesanales en Popayán. Pide en línea y recibe a domicilio.",
+    "Explora el menú completo de La Mordida: hamburguesas artesanales en Popayán. Pide en línea y recibe a domicilio.",
   keywords: [
     "menú hamburguesas Popayán",
-    "perros calientes Popayán",
     "comida rápida a domicilio Popayán",
     "pedir hamburguesas online Popayán",
   ],
@@ -72,7 +71,7 @@ export default async function MenuPage() {
             <p className="eyebrow mb-3">El menú completo</p>
             <h1 className="font-display text-5xl tracking-wide sm:text-6xl">HAZ TU PEDIDO</h1>
             <p className="mt-4 max-w-xl text-charcoal-200">
-              Hamburguesas y perros calientes artesanales en Popayán. Pide en línea y recibe a domicilio.
+              Hamburguesas artesanales en Popayán. Pide en línea y recibe a domicilio.
             </p>
           </div>
         </div>

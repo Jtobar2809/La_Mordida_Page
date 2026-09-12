@@ -31,8 +31,8 @@ export function Hero() {
 
           <Reveal>
             <p className="max-w-xl text-lg text-charcoal-100">
-              Hamburguesas y perros calientes artesanales, con carnes molidas en casa e ingredientes frescos todos
-              los días. Cada mordida suma puntos para tus próximos antojos.
+              Hamburguesas artesanales, con carnes molidas en casa e ingredientes frescos todos los días. Cada
+              mordida suma un sello para acercarte a tu hamburguesa gratis.
             </p>
           </Reveal>
 
@@ -64,7 +64,7 @@ export function Hero() {
               <span>+2.400 mordidas felices</span>
             </div>
             <div className="hidden h-4 w-px bg-charcoal-600 sm:block" />
-            <span>Puntos, niveles y recompensas en cada pedido</span>
+            <span>Tarjeta de sellos en cada compra de mostrador</span>
           </Reveal>
         </div>
 

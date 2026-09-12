@@ -28,8 +28,8 @@ export function Footer() {
             LA <span className="text-ember-500">MORDIDA</span>
           </p>
           <p className="mt-3 max-w-xs text-sm text-charcoal-200">
-            Hamburguesas y perros calientes artesanales. Carnes e ingredientes frescos, preparación 100% artesanal,
-            hechos para morder sin culpa.
+            Hamburguesas artesanales. Carnes e ingredientes frescos, preparación 100% artesanal, hechos para morder
+            sin culpa.
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <a

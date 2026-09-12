@@ -45,7 +45,6 @@ type FilaInventario = {
 const INVENTARIO: FilaInventario[] = [
   // ── Proteínas y lácteos ────────────────────────────────────────────────
   { excel: "Carne", nombre: "Carne artesanal", fusionarCon: "Carne artesanal", stock: 2730, unidad: "GRAMOS", stockMinimo: 1300 },
-  { excel: "Salchichas", nombre: "Salchicha americana", fusionarCon: "Salchicha americana", stock: 13, unidad: "UNIDAD", stockMinimo: 5, nota: "estaba en GRAMOS en la base; el Excel la cuenta por unidades" },
   { excel: "Chorizos", nombre: "Chorizo", fusionarCon: "Chorizo", stock: 7, unidad: "UNIDAD", stockMinimo: 3, nota: "estaba en GRAMOS en la base; el Excel lo cuenta por unidades" },
   { excel: "Queso Blanco", nombre: "Queso doble crema", fusionarCon: "Queso doble crema", stock: 1787, unidad: "GRAMOS", stockMinimo: 500 },
   { excel: "Queso Amarillo", nombre: "Queso fundido", fusionarCon: "Queso fundido", stock: 477, unidad: "UNIDAD", stockMinimo: 100, nota: "el Excel dice 'unidades' (¿lonchas?); si en realidad son gramos, corrígelo en el panel" },
@@ -57,7 +56,6 @@ const INVENTARIO: FilaInventario[] = [
 
   // ── Panadería ──────────────────────────────────────────────────────────
   { excel: "Pan Hamburguesa", nombre: "Pan brioche", fusionarCon: "Pan brioche", stock: 18, unidad: "UNIDAD", stockMinimo: 10 },
-  { excel: "Pan Perro", nombre: "Pan de perro", stock: 14, unidad: "UNIDAD", stockMinimo: 4 },
   { excel: "Harina de trigo", nombre: "Harina de trigo", stock: 180, unidad: "GRAMOS", stockMinimo: 100 },
   { excel: "Miga de pan", nombre: "Miga de pan", stock: 550, unidad: "GRAMOS", stockMinimo: 100, nota: "el Excel escribía la unidad como 'grmos'" },
 
@@ -102,7 +100,6 @@ const INVENTARIO: FilaInventario[] = [
   // ── Desechables y empaque ──────────────────────────────────────────────
   { excel: "Papel p grande", nombre: "Papel para papas grande", stock: 57, unidad: "UNIDAD", stockMinimo: 10 },
   { excel: "Papel p pequeño", nombre: "Papel para papas pequeño", stock: 37, unidad: "UNIDAD", stockMinimo: 10 },
-  { excel: "Caja de perro", nombre: "Caja de perro", stock: 11, unidad: "UNIDAD", stockMinimo: 10, nota: "el Excel la medía en 'gramos'; se cargó como unidades" },
   { excel: "Bolsa de papel gr", nombre: "Bolsa de papel grande", stock: 112, unidad: "UNIDAD", stockMinimo: 10 },
   { excel: "Bolsa parafinada", nombre: "Bolsa parafinada", stock: 16, unidad: "UNIDAD", stockMinimo: 10 },
   { excel: "Bolsa hermetica gr", nombre: "Bolsa hermética grande", stock: 80, unidad: "UNIDAD", stockMinimo: 10 },

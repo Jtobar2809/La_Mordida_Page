@@ -26,10 +26,10 @@ export function AuthCard({
             <p className="font-display text-5xl leading-[0.95] tracking-wide">
               CADA MORDIDA
               <br />
-              <span className="text-ember-500">SUMA PUNTOS.</span>
+              <span className="text-ember-500">SUMA SELLOS.</span>
             </p>
             <p className="mt-4 max-w-sm text-charcoal-200">
-              Regístrate y empieza a acumular puntos, subir de nivel y canjear recompensas reales.
+              Regístrate y empieza a acumular sellos, llevar tu tarjeta y reclamar tu hamburguesa gratis.
             </p>
           </div>
           <p className="text-xs text-charcoal-400">© {new Date().getFullYear()} La Mordida</p>

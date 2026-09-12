@@ -280,7 +280,7 @@ export function CobroModal({
           <p className="mt-1 text-xs text-charcoal-400">
             {clienteElegido
               ? `La venta queda a nombre de ${clienteElegido.name ?? "ese cliente"} y aparece en su historial.`
-              : "Sin elegir a nadie, la venta queda como mostrador. No suma puntos en ninguno de los dos casos."}
+              : "Sin elegir a nadie, la venta queda como mostrador. No suma sellos en ninguno de los dos casos."}
           </p>
         </div>
 

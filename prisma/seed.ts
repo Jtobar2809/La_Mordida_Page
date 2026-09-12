@@ -1,23 +1,10 @@
-import { PrismaClient, ChallengeType } from "@prisma/client";
+﻿import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log("🔥 Sembrando datos de La Mordida...");
-
-  // ── Niveles ──────────────────────────────────────────
-  const levelsData = [
-    { name: "Bronce", minPoints: 0, multiplier: 1, color: "#B45309", icon: "medal", order: 0, benefits: ["Acceso al programa de puntos", "Ofertas de cumpleaños"] },
-    { name: "Plata", minPoints: 200, multiplier: 1.1, color: "#94A3B8", icon: "award", order: 1, benefits: ["10% más puntos por compra", "Acceso anticipado a promos"] },
-    { name: "Oro", minPoints: 600, multiplier: 1.25, color: "#F0A93A", icon: "flame", order: 2, benefits: ["25% más puntos por compra", "Regalo de cumpleaños", "Línea de pedidos prioritaria"] },
-    { name: "Diamante", minPoints: 1500, multiplier: 1.5, color: "#38BDF8", icon: "gem", order: 3, benefits: ["50% más puntos por compra", "Invitación a eventos VIP", "Postre gratis cada mes"] },
-  ];
-  for (const level of levelsData) {
-    await prisma.level.upsert({ where: { name: level.name }, update: level, create: level });
-  }
-  const bronce = await prisma.level.findUniqueOrThrow({ where: { name: "Bronce" } });
-  console.log("✅ Niveles creados");
 
   // ── Usuario admin ────────────────────────────────────
   const adminPassword = await bcrypt.hash("Admin123!", 10);
@@ -30,7 +17,6 @@ async function main() {
       password: adminPassword,
       phone: "3000000000",
       role: "ADMIN",
-      levelId: bronce.id,
     },
   });
   console.log("✅ Usuario admin creado (admin@lamordida.com / Admin123!)");
@@ -46,8 +32,6 @@ async function main() {
       password: clientPassword,
       phone: "3001234567",
       role: "CLIENTE",
-      points: 45,
-      levelId: bronce.id,
     },
   });
   console.log("✅ Usuario cliente de prueba creado (cliente@lamordida.com / Cliente123!)");
@@ -55,18 +39,18 @@ async function main() {
   // ── Categorías ───────────────────────────────────────
   const categoriesData = [
     { name: "Hamburguesas", slug: "hamburguesas", icon: "beef", order: 0 },
-    { name: "Hot Dogs", slug: "perros-artesanales", icon: "hotdog", order: 1 },
-    { name: "Combos", slug: "combos", icon: "package", order: 2 },
-    { name: "Acompañamientos", slug: "acompanamientos", icon: "utensils", order: 3 },
-    { name: "Menú Infantil", slug: "menu-infantil", icon: "baby", order: 4 },
-    { name: "Bebidas", slug: "bebidas", icon: "cup-soda", order: 5 },
-    { name: "Adicionales", slug: "adicionales", icon: "plus-circle", order: 6 },
+    { name: "Combos", slug: "combos", icon: "package", order: 1 },
+    { name: "Acompañamientos", slug: "acompanamientos", icon: "utensils", order: 2 },
+    { name: "Menú Infantil", slug: "menu-infantil", icon: "baby", order: 3 },
+    { name: "Bebidas", slug: "bebidas", icon: "cup-soda", order: 4 },
+    { name: "Adicionales", slug: "adicionales", icon: "plus-circle", order: 5 },
   ];
   const categories: Record<string, string> = {};
   for (const cat of categoriesData) {
     const created = await prisma.category.upsert({ where: { slug: cat.slug }, update: cat, create: cat });
     categories[cat.slug] = created.id;
   }
+  await prisma.category.updateMany({ where: { slug: "perros-artesanales" }, data: { active: false } });
   console.log("✅ Categorías creadas");
 
   // ── Productos ────────────────────────────────────────
@@ -97,7 +81,7 @@ async function main() {
       name: "Bacon Boom",
       slug: "bacon-boom",
       description: "Pan brioche sellado en mantequilla de ajo, carne 100% artesanal, cebolla caramelizada, jamón, queso fundido, tocineta, lechuga, tomate y aderezo de la casa.",
-      price: 24000,
+      price: 25000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Tocineta", "Lechuga", "Tomate", "Aderezo"],
       featured: true,
@@ -108,7 +92,7 @@ async function main() {
       name: "Doble Impacto",
       slug: "doble-impacto",
       description: "Pan brioche sellado en mantequilla de ajo, doble carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo de la casa.",
-      price: 24000,
+      price: 26000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Doble carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Aderezo"],
       featured: true,
@@ -130,7 +114,7 @@ async function main() {
       name: "Triple Impacto",
       slug: "triple-impacto",
       description: "Pan brioche sellado en mantequilla de ajo, triple carne 100 % artesanal, cebolla caramelizada, jamón, queso fundido, lechuga, tomate y aderezo de la casa.",
-      price: 28000,
+      price: 32000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan brioche", "Triple carne artesanal", "Cebolla caramelizada", "Jamón", "Queso fundido", "Lechuga", "Tomate", "Aderezo"],
       featured: false,
@@ -141,53 +125,9 @@ async function main() {
       name: "La Mordida",
       slug: "la-mordida",
       description: "Pan pretzel sellado en mantequilla de ajo, carne 100% artesanal, cebolla crispy o caramelizada (a elección), jamón, queso fundido, queso doble crema, queso mozzarella, tocineta, chorizo, lechuga, tomate y aderezo de la casa.",
-      price: 32000,
+      price: 34000,
       categorySlug: "hamburguesas",
       ingredients: ["Pan pretzel", "Carne artesanal", "Cebolla crispy o caramelizada", "Jamón", "Queso fundido", "Queso doble crema", "Queso mozzarella", "Tocineta", "Chorizo", "Lechuga", "Tomate", "Aderezo"],
-      featured: true,
-      spicyLevel: 0,
-      extras: [],
-    },
-    {
-      name: "El Clásico",
-      slug: "el-clasico",
-      description: "Pan brioche, salchicha americana, jamón, queso fundido, ripio de papa y aderezo.",
-      price: 18000,
-      categorySlug: "perros-artesanales",
-      ingredients: ["Pan brioche", "Salchicha americana", "Jamón", "Queso fundido", "Ripio de papa", "Aderezo"],
-      featured: false,
-      spicyLevel: 0,
-      extras: [{ name: "Extra queso", price: 2500 }, { name: "Tocineta", price: 3500 }],
-    },
-    {
-      name: "Aloha Dog",
-      slug: "aloha-dog",
-      description: "Pan brioche, salchicha americana, jamón, queso fundido, ripio de papa, piña calada y aderezo.",
-      price: 20000,
-      categorySlug: "perros-artesanales",
-      ingredients: ["Pan brioche", "Salchicha americana", "Jamón", "Queso fundido", "Ripio de papa", "Piña calada", "Aderezo"],
-      featured: false,
-      spicyLevel: 0,
-      extras: [{ name: "Extra queso", price: 2500 }],
-    },
-    {
-      name: "Bacon Dog",
-      slug: "bacon-dog",
-      description: "Pan brioche, salchicha americana, jamón, queso fundido, tocineta, ripio de papa y aderezo.",
-      price: 22000,
-      categorySlug: "perros-artesanales",
-      ingredients: ["Pan brioche", "Salchicha americana", "Jamón", "Queso fundido", "Tocineta", "Ripio de papa", "Aderezo"],
-      featured: true,
-      spicyLevel: 0,
-      extras: [{ name: "Extra tocineta", price: 3500 }],
-    },
-    {
-      name: "La Mordida Dog",
-      slug: "la-mordida-dog",
-      description: "Pan brioche, salchicha americana envuelta en tocineta, jamón, queso fundido, queso doble crema, queso mozzarella, cebolla crispy, huevo de codorniz, ripio de papa y aderezo.",
-      price: 26000,
-      categorySlug: "perros-artesanales",
-      ingredients: ["Pan brioche", "Salchicha americana envuelta en tocineta", "Jamón", "Queso fundido", "Queso doble crema", "Queso mozzarella", "Cebolla crispy", "Huevo de codorniz", "Ripio de papa", "Aderezo"],
       featured: true,
       spicyLevel: 0,
       extras: [],
@@ -394,6 +334,10 @@ async function main() {
   await prisma.product.deleteMany({
     where: { slug: { in: ["la-ahumada-bbq", "la-picante-jalapeno", "la-clasica-de-pollo", "perro-clasico", "perro-ranchero"] } },
   });
+  await prisma.product.updateMany({
+    where: { slug: { in: ["el-clasico", "aloha-dog", "bacon-dog", "la-mordida-dog"] } },
+    data: { available: false, featured: false },
+  });
   for (const { categorySlug, extras, ...product } of productsData) {
   const categoryId = categories[categorySlug];
 
@@ -421,11 +365,20 @@ async function main() {
   console.log(`✅ ${productsData.length} productos creados`);
 
   // ── Reseñas ──────────────────────────────────────────
+  await prisma.review.deleteMany({
+    where: {
+      OR: [
+        { comment: { contains: "programa de puntos", mode: "insensitive" } },
+        { comment: { contains: "perros artesanales", mode: "insensitive" } },
+        { comment: { contains: "nivel Plata", mode: "insensitive" } },
+      ],
+    },
+  });
   const reviewsData = [
     { authorName: "Camila R.", rating: 5, comment: "La Ahumada BBQ es una locura, el mejor sabor ahumado que he probado en Popayán." },
-    { authorName: "Andrés G.", rating: 5, comment: "Se nota que la carne es fresca. Además el programa de puntos es un plus increíble." },
-    { authorName: "Valentina M.", rating: 4, comment: "Los perros artesanales son mi favorito, sobre todo el ranchero." },
-    { authorName: "Julián T.", rating: 5, comment: "Pedí por WhatsApp y todo fue súper rápido. Ya subí a nivel Plata." },
+    { authorName: "Andrés G.", rating: 5, comment: "Se nota que la carne es fresca. Además la tarjeta de sellos es un plus increíble." },
+    { authorName: "Valentina M.", rating: 4, comment: "La Bacon Boom es mi favorita: tocineta generosa y pan suave." },
+    { authorName: "Julián T.", rating: 5, comment: "Pedí por WhatsApp y todo fue súper rápido. Ya casi lleno mi tarjeta de sellos." },
     { authorName: "Laura P.", rating: 5, comment: "El combo rinde bastante y las papas quedan bien crocantes." },
     { authorName: "Santiago V.", rating: 4, comment: "Muy buena atención y las hamburguesas llegan calientitas." },
   ];
@@ -433,34 +386,6 @@ async function main() {
     await prisma.review.create({ data: review });
   }
   console.log("✅ Reseñas creadas");
-
-  // ── Desafíos ─────────────────────────────────────────
-  const challengesData = [
-    { title: "Compra 5 hamburguesas", description: "Pide 5 unidades de cualquier hamburguesa y gana puntos extra.", type: ChallengeType.CANTIDAD_PRODUCTO, goal: 5, rewardPoints: 30, rewardDescription: "30 puntos extra" },
-    { title: "Realiza 10 pedidos", description: "Haz 10 pedidos con nosotros (a domicilio o recogiendo en tienda).", type: ChallengeType.PEDIDOS_TOTALES, goal: 10, rewardPoints: 80, rewardDescription: "80 puntos extra" },
-    { title: "3 semanas seguidas", description: "Haz al menos un pedido por semana durante 3 semanas consecutivas.", type: ChallengeType.RACHA_SEMANAS, goal: 3, rewardPoints: 50, rewardDescription: "50 puntos extra" },
-    { title: "Prueba todo el menú", description: "Compra al menos un producto de cada categoría del menú.", type: ChallengeType.CATEGORIA_COMPLETA, goal: 5, rewardPoints: 60, rewardDescription: "60 puntos extra" },
-    { title: "Mes de cumpleaños", description: "Haz un pedido durante el mes de tu cumpleaños y recibe puntos de regalo.", type: ChallengeType.CUMPLEANOS, goal: 1, rewardPoints: 40, rewardDescription: "40 puntos de regalo" },
-  ];
-  for (const challenge of challengesData) {
-    const existing = await prisma.challenge.findFirst({ where: { title: challenge.title } });
-    if (!existing) await prisma.challenge.create({ data: challenge });
-  }
-  console.log("✅ Desafíos creados");
-
-  // ── Recompensas ──────────────────────────────────────
-  const rewardsData = [
-    { name: "Papas a la francesa gratis", description: "Canjea tus puntos por una orden de papas.", pointsCost: 40 },
-    { name: "Gaseosa 400ml gratis", description: "Refréscate sin costo.", pointsCost: 25 },
-    { name: "Perro Clásico gratis", description: "Un perro artesanal clásico, cortesía de la casa.", pointsCost: 90 },
-    { name: "Hamburguesa La Clásica gratis", description: "Nuestra hamburguesa insignia, gratis con tus puntos.", pointsCost: 140 },
-    { name: "20% de descuento en tu próximo pedido", description: "Aplica sobre el subtotal de tu siguiente compra.", pointsCost: 100 },
-  ];
-  for (const reward of rewardsData) {
-    const existing = await prisma.reward.findFirst({ where: { name: reward.name } });
-    if (!existing) await prisma.reward.create({ data: reward });
-  }
-  console.log("✅ Recompensas creadas");
 
   // ── Cupón de ejemplo ─────────────────────────────────
   await prisma.coupon.upsert({
@@ -471,6 +396,9 @@ async function main() {
   console.log("✅ Cupón de bienvenida creado (BIENVENIDA10)");
 
   // ── Banners de ejemplo ───────────────────────────────
+  await prisma.banner.deleteMany({
+    where: { title: { contains: "perros", mode: "insensitive" } },
+  });
   const bannersData = [
     {
       title: "Combo Ahumada BBQ",
@@ -480,9 +408,9 @@ async function main() {
       order: 0,
     },
     {
-      title: "2x1 en perros artesanales",
-      subtitle: "Todos los martes de julio",
-      image: "https://images.unsplash.com/photo-1612392062798-2dd67ddb7ec9?q=80&w=1200",
+      title: "Tarjeta de sellos",
+      subtitle: "Junta 7 sellos y reclama una hamburguesa gratis",
+      image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=1200",
       link: "/menu",
       order: 1,
     },
@@ -494,9 +422,12 @@ async function main() {
   console.log("✅ Banners de ejemplo creados");
 
   // ── Galería de ejemplo ───────────────────────────────
+  await prisma.galleryImage.deleteMany({
+    where: { alt: { contains: "perro", mode: "insensitive" } },
+  });
   const galleryData = [
     { image: "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=800", alt: "Hamburguesa artesanal doble", order: 0, active: true },
-    { image: "https://images.unsplash.com/photo-1550317138-10000687a72b?q=80&w=600", alt: "Perro caliente artesanal", order: 1, active: true },
+    { image: "https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=600", alt: "Hamburguesa artesanal con queso", order: 1, active: true },
     { image: "https://images.unsplash.com/photo-1551782450-a2132b4ba21d?q=80&w=600", alt: "Papas a la francesa", order: 2, active: true },
     { image: "https://images.unsplash.com/photo-1610614819513-58e34989e371?q=80&w=600", alt: "Carne a la parrilla", order: 3, active: true },
   ];
@@ -517,3 +448,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

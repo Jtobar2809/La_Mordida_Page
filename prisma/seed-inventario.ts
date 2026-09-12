@@ -23,7 +23,6 @@ const insumosBase: {
   { nombre: "Aderezo", unidad: "GRAMOS", esElaborado: true },
   { nombre: "Piña asada", unidad: "GRAMOS" },
   { nombre: "Piña calada", unidad: "GRAMOS" },
-  { nombre: "Salchicha americana", unidad: "UNIDAD" },
   { nombre: "Ripio de papa", unidad: "GRAMOS" },
   { nombre: "Huevo de codorniz", unidad: "UNIDAD" },
   { nombre: "Papa fresca", unidad: "GRAMOS" },
@@ -148,49 +147,6 @@ const recetas: Record<string, [string, number][]> = {
     ["Chorizo", 1],
     ["Lechuga", 1],
     ["Tomate", 1],
-    ["Aderezo", 1],
-  ],
-
-  "el-clasico": [
-    ["Pan brioche", 1],
-    ["Salchicha americana", 1],
-    ["Jamón", 1],
-    ["Queso fundido", 1],
-    ["Ripio de papa", 1],
-    ["Aderezo", 1],
-  ],
-
-  "aloha-dog": [
-    ["Pan brioche", 1],
-    ["Salchicha americana", 1],
-    ["Jamón", 1],
-    ["Queso fundido", 1],
-    ["Ripio de papa", 1],
-    ["Piña calada", 1],
-    ["Aderezo", 1],
-  ],
-
-  "bacon-dog": [
-    ["Pan brioche", 1],
-    ["Salchicha americana", 1],
-    ["Jamón", 1],
-    ["Queso fundido", 1],
-    ["Tocineta", 1],
-    ["Ripio de papa", 1],
-    ["Aderezo", 1],
-  ],
-
-  "la-mordida-dog": [
-    ["Pan brioche", 1],
-    ["Salchicha americana", 1],
-    ["Tocineta", 1],
-    ["Jamón", 1],
-    ["Queso fundido", 1],
-    ["Queso doble crema", 1],
-    ["Queso mozzarella", 1],
-    ["Cebolla crispy", 1],
-    ["Huevo de codorniz", 1],
-    ["Ripio de papa", 1],
     ["Aderezo", 1],
   ],
 

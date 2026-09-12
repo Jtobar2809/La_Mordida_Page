@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
 export const DEFAULT_SETTINGS = {
-  pointsPerPeso: "1000", // 1000 pesos gastados = 1 punto
   deliveryFee: "5000",
   taxRate: "0", // porcentaje, 0 si los precios ya incluyen impuestos
   whatsappNumber: "573108325015",
@@ -9,7 +8,6 @@ export const DEFAULT_SETTINGS = {
   storeSchedule: "Lun a Dom, 5:00 p.m. – 10:00 p.m.",
   storeLat: "2.451057",
   storeLng: "-76.602570",
-  welcomeBonusPoints: "20",
   // Global feature toggles (stringified booleans)
   carouselEnabled: "true",
   // Supuestos del análisis de costos fijos (ver src/lib/operacion.ts). Solo se

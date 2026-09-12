@@ -25,8 +25,8 @@ const items = [
   },
   {
     icon: Gift,
-    title: "Puntos en cada compra",
-    text: "Acumula, sube de nivel y canjea recompensas reales.",
+    title: "Sellos en mostrador",
+    text: "Junta 7 sellos y reclama una hamburguesa gratis.",
   },
 ];
 

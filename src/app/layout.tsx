@@ -35,12 +35,11 @@ export const metadata: Metadata = {
   },
 
   description:
-    "Hamburguesas y perros calientes artesanales en Popayán, Cauca. Comida rápida a domicilio: pide en línea, acumula puntos y canjea recompensas con cada mordida.",
+    "Hamburguesas artesanales en Popayán, Cauca. Comida rápida a domicilio: pide en línea y disfruta tu hamburguesa favorita.",
 
   keywords: [
     "hamburguesas Popayán",
     "comida rápida Popayán",
-    "perros calientes Popayán",
     "domicilios Popayán",
     "hamburguesas artesanales Popayán",
     "restaurante Popayán",
@@ -61,7 +60,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "La Mordida | Hamburguesas y Comida Rápida en Popayán",
     description:
-      "Hamburguesas y perros calientes artesanales en Popayán, Cauca. Pide en línea y acumula puntos con cada mordida.",
+      "Hamburguesas artesanales en Popayán, Cauca. Pide en línea y disfruta tu hamburguesa favorita.",
     url: siteUrl,
     siteName: "La Mordida",
     locale: "es_CO",
@@ -81,7 +80,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "La Mordida | Hamburguesas y Comida Rápida en Popayán",
     description:
-      "Hamburguesas y perros calientes artesanales en Popayán, Cauca.",
+      "Hamburguesas artesanales en Popayán, Cauca.",
 
     images: ["/og-image.jpg"],
   },
@@ -107,7 +106,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     url: siteUrl,
     telephone: `+${settings.whatsappNumber}`,
     priceRange: "$$",
-    servesCuisine: ["Hamburguesas", "Comida rápida", "Perros calientes"],
+    servesCuisine: ["Hamburguesas", "Comida rápida"],
     address: {
       "@type": "PostalAddress",
       streetAddress: settings.storeAddress,

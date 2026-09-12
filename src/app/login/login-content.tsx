@@ -69,7 +69,7 @@ export default function LoginContent() {
   return (
     <AuthCard
       title="INGRESA"
-      subtitle="Accede a tus puntos, pedidos y recompensas"
+      subtitle="Accede a tus sellos, pedidos y recompensas"
       footer={
         <>
           ¿No tienes cuenta?{" "}

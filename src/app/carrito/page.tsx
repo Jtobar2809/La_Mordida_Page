@@ -226,7 +226,7 @@ export default function CartPage() {
                 </Button>
                 {status !== "authenticated" && (
                   <p className="mt-2 text-center text-xs text-charcoal-400">
-                    Necesitas <Link href="/login?callbackUrl=/carrito" className="text-ember-600 underline">iniciar sesión</Link> para ganar puntos con este pedido.
+                    Necesitas <Link href="/login?callbackUrl=/carrito" className="text-ember-600 underline">iniciar sesión</Link> para continuar con tu pedido.
                   </p>
                 )}
               </div>

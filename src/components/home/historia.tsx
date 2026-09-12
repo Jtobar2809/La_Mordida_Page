@@ -32,9 +32,8 @@ export function Historia() {
           </h2>
           <p className="mt-6 text-charcoal-500 dark:text-charcoal-200">
             La Mordida empezó como un carrito de barrio con una idea simple: nada de congelados, nada de atajos.
-            Solo carne fresca, pan recién horneado y las manos de nuestro equipo armando cada hamburguesa y cada
-            perro caliente como si fuera para su propia familia. Hoy seguimos igual, solo que con más mesas y más
-            mordidas por repartir.
+            Solo carne fresca, pan recién horneado y las manos de nuestro equipo armando cada hamburguesa como si
+            fuera para su propia familia. Hoy seguimos igual, solo que con más mesas y más mordidas por repartir.
           </p>
         </Reveal>
 

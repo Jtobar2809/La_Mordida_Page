@@ -19,23 +19,15 @@ model User {
   address            String?
   birthDate          DateTime?
   role               Role                @default(CLIENTE)
-  points             Int                 @default(0)
-  levelId            String?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   accounts           Account[]
-  challengeProgress  ChallengeProgress[]
-  codeRedemptions    CodeRedemption[]
   gameSessions       GameSession[]
   orders             Order[]
-  pointsTransactions PointsTransaction[]
-  redemptions        Redemption[]
-  createdCodes       RedemptionCode[]    @relation("CodeCreator")
   sessions           Session[]
   stampCard          StampCard?
   claimedStamps      StampQR[]           @relation("StampClaimer")
   generatedStamps    StampQR[]           @relation("StampGenerator")
-  level              Level?              @relation(fields: [levelId], references: [id])
   cajasAbiertas      CajaSesion[]        @relation("CajaAbiertaPor")
   cajasCerradas      CajaSesion[]        @relation("CajaCerradaPor")
 
@@ -83,20 +75,6 @@ model PasswordResetToken {
   expires DateTime
 
   @@index([email])
-}
-
-model Level {
-  id         String   @id @default(cuid())
-  name       String   @unique
-  minPoints  Int
-  multiplier Float    @default(1)
-  color      String   @default("#E85C2B")
-  icon       String   @default("flame")
-  benefits   String[]
-  order      Int      @default(0)
-  users      User[]
-
-  @@index([order])
 }
 
 model Category {
@@ -602,7 +580,6 @@ model Order {
   discount             Int          @default(0)
   total                Int
   couponCode           String?
-  pointsEarned         Int          @default(0)
   whatsappSent         Boolean      @default(false)
   inventarioDescontado Boolean      @default(false)
 
@@ -624,7 +601,6 @@ model Order {
   updatedAt          DateTime            @updatedAt
   user               User                @relation(fields: [userId], references: [id])
   items              OrderItem[]
-  pointsTransactions PointsTransaction[]
   cajaSesion         CajaSesion?         @relation(fields: [cajaSesionId], references: [id], onDelete: SetNull)
   movimientosCaja    MovimientoCaja[]
 
@@ -647,117 +623,6 @@ model OrderItem {
   product   Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
-}
-
-model PointsTransaction {
-  id          String     @id @default(cuid())
-  userId      String
-  orderId     String?
-  points      Int
-  type        PointsType
-  description String
-  createdAt   DateTime   @default(now())
-  order       Order?     @relation(fields: [orderId], references: [id])
-  user        User       @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([type])
-}
-
-model RedemptionCode {
-  id          String           @id @default(cuid())
-  code        String           @unique
-  pointsValue Int
-  description String?
-  maxUses     Int              @default(1)
-  uses        Int              @default(0)
-  active      Boolean          @default(true)
-  expiresAt   DateTime?
-  createdById String
-  createdAt   DateTime         @default(now())
-  redemptions CodeRedemption[]
-  createdBy   User             @relation("CodeCreator", fields: [createdById], references: [id])
-
-  @@index([code])
-  @@index([active])
-}
-
-model CodeRedemption {
-  id               String         @id @default(cuid())
-  userId           String
-  redemptionCodeId String
-  pointsEarned     Int
-  createdAt        DateTime       @default(now())
-  redemptionCode   RedemptionCode @relation(fields: [redemptionCodeId], references: [id])
-  user             User           @relation(fields: [userId], references: [id])
-
-  @@unique([userId, redemptionCodeId])
-  @@index([redemptionCodeId])
-}
-
-model Challenge {
-  id                String              @id @default(cuid())
-  title             String
-  description       String
-  type              ChallengeType
-  goal              Int
-  rewardPoints      Int                 @default(0)
-  rewardDescription String?
-  badgeIcon         String              @default("trophy")
-  active            Boolean             @default(true)
-  startDate         DateTime?
-  endDate           DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  progress          ChallengeProgress[]
-
-  @@index([active])
-}
-
-model ChallengeProgress {
-  id          String    @id @default(cuid())
-  userId      String
-  challengeId String
-  progress    Int       @default(0)
-  completed   Boolean   @default(false)
-  completedAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  challenge   Challenge @relation(fields: [challengeId], references: [id])
-  user        User      @relation(fields: [userId], references: [id])
-
-  @@unique([userId, challengeId])
-  @@index([userId])
-}
-
-model Reward {
-  id          String       @id @default(cuid())
-  name        String
-  description String?
-  pointsCost  Int
-  image       String?
-  stock       Int?
-  active      Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  redemptions Redemption[]
-
-  @@index([active])
-}
-
-model Redemption {
-  id          String           @id @default(cuid())
-  userId      String
-  rewardId    String
-  pointsSpent Int
-  code        String           @unique
-  status      RedemptionStatus @default(PENDIENTE)
-  createdAt   DateTime         @default(now())
-  reward      Reward           @relation(fields: [rewardId], references: [id])
-  user        User             @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([code])
 }
 
 model Coupon {
@@ -1008,32 +873,6 @@ enum OrderStatus {
 enum DeliveryType {
   DOMICILIO
   RECOGE_EN_TIENDA
-}
-
-enum PointsType {
-  GANADO_COMPRA
-  GANADO_CODIGO
-  GANADO_DESAFIO
-  CANJEADO
-  AJUSTE_ADMIN
-  BONO_BIENVENIDA
-}
-
-enum ChallengeType {
-  CANTIDAD_PRODUCTO
-  PEDIDOS_TOTALES
-  RACHA_SEMANAS
-  REFERIDO
-  PRODUCTO_NUEVO
-  CUMPLEANOS
-  CATEGORIA_COMPLETA
-  COMBO
-}
-
-enum RedemptionStatus {
-  PENDIENTE
-  ENTREGADO
-  CANCELADO
 }
 
 enum DiscountType {

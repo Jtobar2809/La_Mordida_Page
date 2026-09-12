@@ -51,7 +51,7 @@ export default function RegisterContent() {
   return (
     <AuthCard
       title="CREA TU CUENTA"
-      subtitle="Únete y empieza a acumular puntos desde tu primer pedido"
+      subtitle="Únete y empieza a acumular sellos desde tu primer pedido"
       footer={
         <>
           ¿Ya tienes cuenta?{" "}
