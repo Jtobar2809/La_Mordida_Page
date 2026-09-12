@@ -452,7 +452,6 @@ export async function cobrarVenta(input: unknown): Promise<ActionResult<VentaCob
             // alguien usara una promoción.
             discount: descuentoTotal,
             total,
-            pointsEarned: 0,
             whatsappSent: false,
             metodoPago: metodoPrincipal,
             efectivoRecibido: montoEfectivo > 0 ? (efectivoRecibido ?? montoEfectivo) : null,

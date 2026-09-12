@@ -138,7 +138,6 @@ export async function createOrder(
       discount,
       total,
       couponCode: appliedCoupon,
-      pointsEarned: 0,
       items: {
         create: pricedItems.map((item) => ({
           productId: item.productId,
@@ -256,7 +255,6 @@ export async function createManualOrder(input: unknown): Promise<ActionResult<{ 
       tax,
       discount: 0,
       total,
-      pointsEarned: 0,
       whatsappSent: false,
       items: {
         create: orderItemsData.map((item) => ({
